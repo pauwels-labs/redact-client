@@ -1,0 +1,18 @@
+[package]
+name = "redact-decrypt"
+version = "0.1.0"
+authors = ["ajp <8890201+ajpauwels@users.noreply.github.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+config = "0.9"
+tokio = { version = "~0.2", features = ["macros"] }
+warp = "~0.2"
+serde = { version = "~1.0", features = ["derive"] }
+sodiumoxide = { version = "~0.2" }
+http = "~0.2"
+base64 = "~0.12"
+uuid = { version = "~0.8", features = ["v4"] }
+futures = "~0.3.4"

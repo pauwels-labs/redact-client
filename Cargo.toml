@@ -1,5 +1,5 @@
 [package]
-name = "redact-decrypt"
+name = "redact-client"
 version = "0.1.0"
 authors = ["ajp <8890201+ajpauwels@users.noreply.github.com>"]
 edition = "2018"

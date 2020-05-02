@@ -1,2 +1,0 @@
-Some(data) -> Result(decrypted data) -> Result(json return with decrypted data)
-      None -> Result(empty json return)

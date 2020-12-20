@@ -1,0 +1,10 @@
+<html>
+  <head>
+  </head>
+  <body>
+    <iframe id="data-iframe" src="" title="secure"></iframe>
+    <script>
+      document.getElementById("data-iframe").contentWindow.location.href = "/data/{{ path }}/{{ token }}";
+    </script>
+  </body>
+</html>

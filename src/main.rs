@@ -1,249 +1,272 @@
-use std::sync::{Arc, Mutex};
+mod session;
+mod storage;
+mod token;
+
+use handlebars::Handlebars;
+use rust_config::Configurator;
+use serde::Serialize;
+use session::MemoryStore;
+use std::sync::Arc;
 use warp::Filter;
 
-pub mod config;
-pub mod error;
-pub mod key;
-pub mod session;
-use crate::config::Configurator;
-use key::Key;
-use session::SessionManager;
+#[derive(Serialize)]
+struct Healthz {}
 
 #[tokio::main]
 async fn main() {
-    let config = config::new().unwrap();
-    let key_path = config.get_str("key.path").unwrap();
-    let key: Arc<Key> = Arc::new(Key::new(&key_path).unwrap());
+    // Extract config with a REDACT env var prefix
+    let config = rust_config::new("REDACT").unwrap();
 
-    let healthz = warp::path!("healthz").map(|| "ok");
-    let apiv1 = warp::path("api").and(warp::path("v1"));
-
-    let sess_mgr = Arc::new(Mutex::new(SessionManager::new()));
-
-    let data = warp::path("data");
-    let unsecure_data = data
-        .and(warp::path::full())
-        .and(session::get_session(sess_mgr.clone()))
-        .and_then(move |path, sess| handlers::unsecure_data(path, sess));
-
-    let decrypt_key = key.clone();
-    let secure_data = warp::path("secure")
-        .and(data)
-        .and(session::get_session(sess_mgr.clone()))
-        .and(warp::path::full())
-        .and(warp::query::<models::SecureOptions>())
-        .and_then(move |sess, path, opts| {
-            handlers::secure_data(sess, path, opts, decrypt_key.clone())
-        });
-
-    warp::serve(warp::get().and(healthz.or(apiv1.and(unsecure_data.or(secure_data)))))
-        .run(([127, 0, 0, 1], 8080))
-        .await;
-}
-
-mod handlers {
-    use super::error::Error;
-    use super::models::SecureOptions;
-    use super::session::Session;
-    use super::Key;
-    use std::fmt::{Display, Formatter};
-    use std::sync::{Arc, Mutex};
-    use warp::http::{Response, StatusCode};
-    use warp::path::FullPath;
-    use warp::{Rejection, Reply};
-
-    #[derive(Debug)]
-    pub struct HttpError {
-        pub status_code: StatusCode,
-        pub err: Error,
-    }
-
-    impl Display for HttpError {
-        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{}: {}", self.status_code, self.err.to_string())
-        }
-    }
-
-    impl HttpError {
-        fn new(status_code: u16, msg: String, mut fields: Vec<String>) -> HttpError {
-            let status_code = StatusCode::from_u16(status_code)
-                .unwrap_or(StatusCode::from_u16(500).ok().unwrap());
-
-            fields.push("status_code".to_owned());
-            fields.push(status_code.to_string());
-            HttpError {
-                status_code,
-                err: Error::new(msg, fields),
+    // Determine port to listen on
+    let port = match config.get_int("server.port") {
+        Ok(port) => {
+            if port < 1 || port > 65535 {
+                println!(
+                    "listen port value '{}' is not between 1 and 65535, defaulting to 8080",
+                    port
+                );
+                8080 as u16
+            } else {
+                port as u16
             }
         }
+        Err(e) => {
+            match e {
+                // Suppress debug logging if server.port was simply not set
+                rust_config::ConfigError::NotFound(_) => (),
+                _ => println!("{}", e),
+            }
+            8080 as u16
+        }
+    };
+
+    // Load HTML templates
+    let mut hb = Handlebars::new();
+    hb.register_template_file("unsecure", "./static/unsecure.handlebars")
+        .unwrap();
+    hb.register_template_file("secure", "./static/secure.handlebars")
+        .unwrap();
+    let hb = Arc::new(hb);
+
+    // Get storage url
+    let storage_url = config.get_str("storage.url").unwrap();
+
+    // Create an in-memory session store
+    let store = MemoryStore::new();
+
+    // Build out routes
+    let health_route = warp::path!("healthz").map(|| warp::reply::json(&Healthz {}));
+    let data_routes = filters::data(storage_url, store, hb.clone());
+
+    // Start the server
+    println!("starting server");
+    let routes = health_route.or(data_routes);
+    warp::serve(routes).run(([0, 0, 0, 0], port)).await;
+}
+
+mod filters {
+    use crate::session::{self, Session, SessionStore};
+    use crate::storage;
+    use crate::token;
+    use handlebars::Handlebars;
+    use serde::Serialize;
+    use std::{collections::BTreeMap, sync::Arc};
+    use warp::{Filter, Rejection, Reply};
+
+    fn render<T>(template: WithTemplate<T>, hbs: Arc<Handlebars>) -> impl warp::Reply
+    where
+        T: Serialize,
+    {
+        let render = hbs
+            .render(template.name, &template.value)
+            .unwrap_or_else(|err| err.to_string());
+        warp::reply::html(render)
     }
 
-    pub async fn unsecure_data(
-        path: FullPath,
-        sess: Arc<Mutex<Session>>,
-    ) -> Result<impl Reply, Rejection> {
-        let path_str = path.as_str().to_owned();
-        let all_path_parts = path_str.trim_matches('/').split('/');
-        let path_parts = all_path_parts.skip(3).collect::<Vec<&str>>().join("");
-        let secure_token = super::session::gen_token().unwrap();
-        let mut sess = sess.lock().unwrap();
-        sess.insert(&path_parts, &secure_token);
+    struct WithTemplate<T: Serialize> {
+        name: &'static str,
+        value: T,
+    }
 
-        let body = r#"<!DOCTYPE html>
-<html>
-  <head></head>
-  <body>
-    <div id="iframe-container"></div>
-    <script>
-      window.onload = init;
+    pub fn data<T: SessionStore>(
+        url: String,
+        sess_store: T,
+        hb: Arc<Handlebars>,
+    ) -> impl Filter<Extract = impl Reply + '_, Error = Rejection> + Clone {
+        secure_data_get(url.clone(), sess_store.clone(), hb.clone())
+            .or(unsecure_data_get(sess_store.clone(), hb.clone()))
+    }
 
-      function init() {
-        var iframe = document.createElement("iframe");
-        iframe.setAttribute("src", "http://localhost:8080/api/v1/secure/data/"#
-            .to_owned()
-            + &path_parts
-            + "?token="
-            + &secure_token
-            + r#"");
-        iframe.setAttribute("sandbox", "");
-        iframe.style.width = "500px";
-        iframe.style.height = "500px";
-        document.getElementById("iframe-container").appendChild(iframe);
-      }
-    </script>
-  </body>
-</html>
-"#;
+    pub fn secure_data_get<T: SessionStore>(
+        storage_url: String,
+        sess_store: T,
+        hb: Arc<Handlebars>,
+    ) -> impl Filter<Extract = impl Reply + '_, Error = Rejection> + Clone {
+        // Create a reusable closure to render template
+        let handlebars = move |(with_template, sid, path, token): (_, String, String, String)| {
+            let hb = hb.clone();
 
-        Response::builder()
-            .status(StatusCode::OK)
-            .header(
-                "Set-Cookie",
-                "sid=".to_owned() + &sess.id + "; Path=/api/v1",
+            async move {
+                Ok::<_, Rejection>(warp::reply::with_header(
+                    render(with_template, hb),
+                    "Set-Cookie",
+                    format!(
+                        "sid={}; Max-Age=0; SameSite=Strict; Path=/data/{}/{}; HttpOnly",
+                        sid, path, token
+                    ),
+                ))
+            }
+        };
+
+        warp::path!("data" / String / String)
+            .and(warp::get())
+            .and(warp::any().map(move || storage_url.clone()))
+            .and(session::with_session(sess_store.clone()))
+            .and_then(
+                move |path: String, query_token: String, url: String, mut sess: Session| {
+                    let sess_store = sess_store.clone();
+                    async move {
+                        println!("secure data route");
+                        println!("path: {}, query_token: {}", path, query_token);
+                        match sess.get("token") {
+                            Some::<String>(sess_token) => {
+                                println!("sess: {:?}", sess);
+                                sess.remove("token");
+                                println!("sess: {:?}", sess);
+                                let sid = sess_store
+                                    .store_session(sess)
+                                    .await
+                                    .map_err(|source| {
+                                        println!("error storing session: {:?}", source);
+                                        warp::reject::custom(session::SessionError::StoreError {
+                                            source,
+                                        })
+                                    })?
+                                    .unwrap();
+
+                                if sess_token != query_token {
+                                    Ok((
+                                        WithTemplate {
+                                            name: "secure",
+                                            value: storage::Data {
+                                                data_type: "".to_string(),
+                                                path: "".to_string(),
+                                                value: serde_json::Value::String(
+                                                    "TOKENS DID NOT MATCH".to_string(),
+                                                ),
+                                            },
+                                        },
+                                        sid,
+                                        path,
+                                        query_token,
+                                    ))
+                                } else {
+                                    storage::get(&url, path.clone()).await.map(|data| {
+                                        println!("{:?}", data);
+                                        Ok::<_, Rejection>((
+                                            WithTemplate {
+                                                name: "secure",
+                                                value: data,
+                                            },
+                                            sid,
+                                            path,
+                                            query_token,
+                                        ))
+                                    })?
+                                }
+                            }
+                            None => {
+                                let sid = sess_store
+                                    .store_session(sess)
+                                    .await
+                                    // .map_err(|source| {
+                                    //     println!("error storing session: {:?}", source);
+                                    //     warp::reject::custom(session::SessionError::StoreError {
+                                    //         source,
+                                    //     })
+                                    // })?
+                                    .unwrap()
+                                    .unwrap();
+
+                                Ok((
+                                    WithTemplate {
+                                        name: "secure",
+                                        value: storage::Data {
+                                            data_type: "".to_string(),
+                                            path: "".to_string(),
+                                            value: serde_json::Value::String(
+                                                "COULD NOT GET TOKEN".to_string(),
+                                            ),
+                                        },
+                                    },
+                                    sid,
+                                    path,
+                                    query_token,
+                                ))
+                            }
+                        }
+                    }
+                },
             )
-            .body(body)
-            .map_err(|e| warp::reject::custom(Error::new(format!("{}", e), vec![])))
+            .and_then(handlebars)
     }
 
-    pub async fn secure_data(
-        sess: Arc<Mutex<Session>>,
-        path: FullPath,
-        opts: SecureOptions,
-        key: Arc<Key>,
-    ) -> Result<impl Reply, Rejection> {
-        let resp = Response::builder().status(StatusCode::OK);
-        let query_token = match opts.token {
-            Some(t) => t,
-            None => {
-                let body = r#"<!DOCTYPE html>
-<html>
-  <head></head>
-  <body>
-    <p>invalid</p>
-  </body>
-</html>
-"#;
+    pub fn unsecure_data_get<T: SessionStore>(
+        sess_store: T,
+        hb: Arc<Handlebars>,
+    ) -> impl Filter<Extract = impl Reply + '_, Error = Rejection> + Clone {
+        // Create a reusable closure to render template
+        let handlebars =
+            move |(with_template, sess_id, path, token): (_, String, String, String)| {
+                let hb = hb.clone();
+                async move {
+                    Ok::<_, Rejection>(warp::reply::with_header(
+                        render(with_template, hb),
+                        "Set-Cookie",
+                        format!(
+                            "sid={}; Max-Age=60; SameSite=Strict; Path=/data/{}/{}; HttpOnly",
+                            sess_id, path, token
+                        ),
+                    ))
+                }
+            };
 
-                return resp
-                    .body(body.to_owned())
-                    .map_err(|e| warp::reject::custom(Error::new(format!("{}", e), vec![])));
-            }
-        };
-
-        let path_str = path.as_str().to_owned();
-        let all_path_parts = path_str.trim_matches('/').split('/');
-        let path_parts = all_path_parts.skip(4).collect::<Vec<&str>>().join("");
-        let mut sess = sess.lock().unwrap();
-        let sess_token = match sess.consume(&path_parts, &query_token) {
-            Some(t) => t,
-            None => {
-                let body = r#"<!DOCTYPE html>
-<html>
-  <head></head>
-  <body>
-    <p>invalid</p>
-  </body>
-</html>
-"#;
-
-                return resp
-                    .body(body.to_owned())
-                    .map_err(|e| warp::reject::custom(Error::new(format!("{}", e), vec![])));
-            }
-        };
-        if query_token != sess_token {
-            println!("sess and query tokes don't match");
-            let body = r#"<!DOCTYPE html>
-<html>
-  <head></head>
-  <body>
-    <p>invalid</p>
-  </body>
-</html>
-"#;
-
-            return resp
-                .body(body.to_owned())
-                .map_err(|e| warp::reject::custom(Error::new(format!("{}", e), vec![])));
-        }
-
-        let enc = key.encrypt(path_parts.as_bytes());
-
-        let data_str = key
-            .decrypt(&enc)
-            .map_err(|e| HttpError::new(500, format!("failed to decrypt: {}", e), vec![]))
-            .and_then(|decrypted_data| {
-                String::from_utf8(decrypted_data).map_err(|e| {
-                    HttpError::new(
-                        500,
-                        format!("failed to convert decrypted bytes to a string: {}", e),
-                        vec![],
-                    )
-                })
-            });
-
-        let body = match data_str {
-            Ok(s) => {
-                r#"<!DOCTYPE html>
-<html>
-  <head></head>
-  <body>
-    <p>"#
-                    .to_owned()
-                    + &s
-                    + r#"</p>
-  </body>
-</html>
-"#
-            }
-            Err(_) => r#"<!DOCTYPE html>
-<html>
-  <head></head>
-  <body>
-    <p>invalid</p>
-  </body>
-</html>
-"#
-            .to_owned(),
-        };
-
-        Response::builder()
-            .status(StatusCode::OK)
-            .body(body)
-            .map_err(|e| warp::reject::custom(Error::new(format!("{}", e), vec![])))
-    }
-}
-
-mod models {
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct EncryptResponse {
-        pub data: String,
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct SecureOptions {
-        pub token: Option<String>,
+        warp::path!("data" / String)
+            .and(warp::get())
+            .and(session::with_session(sess_store.clone()))
+            .and_then(move |path: String, mut sess: Session| {
+                println!("unsecure data route");
+                let sess_store = sess_store.clone();
+                async move {
+                    let token = token::generate_token()?;
+                    println!("generated token: {}", token.clone());
+                    sess.insert("token", token.clone())
+                        .map_err(|_| warp::reject())?;
+                    let mut template_values = BTreeMap::new();
+                    template_values.insert("path".to_string(), path.clone());
+                    template_values.insert("token".to_string(), token.clone());
+                    println!("data changed? {}", sess.data_changed());
+                    sess.regenerate();
+                    let sid = sess_store
+                        .store_session(sess)
+                        .await
+                        .map_err(|source| {
+                            println!("here: {:?}", source);
+                            warp::reject::custom(session::SessionError::StoreError { source })
+                        })?
+                        .unwrap();
+                    println!("template_values: {:?}", template_values);
+                    Ok::<_, Rejection>((
+                        WithTemplate {
+                            name: "unsecure",
+                            value: template_values,
+                        },
+                        sid,
+                        path,
+                        token,
+                    ))
+                }
+            })
+            .and_then(handlebars)
     }
 }

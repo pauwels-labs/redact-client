@@ -1,2 +1,2 @@
-key:
-  path: key
+storage:
+  url: http://localhost:8080

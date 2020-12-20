@@ -69,7 +69,7 @@ mod filters {
     use crate::storage;
     use crate::token;
     use handlebars::Handlebars;
-    use serde::Serialize;
+    use serde::{Deserialize, Serialize};
     use std::{collections::BTreeMap, sync::Arc};
     use warp::{Filter, Rejection, Reply};
 
@@ -86,6 +86,11 @@ mod filters {
     struct WithTemplate<T: Serialize> {
         name: &'static str,
         value: T,
+    }
+
+    #[derive(Deserialize, Serialize)]
+    struct WithCss {
+        css: String,
     }
 
     pub fn data<T: SessionStore>(
@@ -120,11 +125,19 @@ mod filters {
 
         warp::path!("data" / String / String)
             .and(warp::get())
+            .and(warp::query::<WithCss>())
             .and(warp::any().map(move || storage_url.clone()))
             .and(session::with_session(sess_store.clone()))
             .and_then(
-                move |path: String, query_token: String, url: String, sess: Session| {
+                move |path: String,
+                      query_token: String,
+                      css: WithCss,
+                      url: String,
+                      sess: Session| {
                     let sess_store = sess_store.clone();
+                    let mut template_values = BTreeMap::new();
+                    template_values.insert("css".to_string(), css.css.clone());
+
                     async move {
                         println!("secure data route");
                         println!("path: {}, query_token: {}", path, query_token);
@@ -138,16 +151,14 @@ mod filters {
                                 })?;
 
                                 if sess_token != query_token {
+                                    template_values.insert(
+                                        "data".to_string(),
+                                        "TOKENS DID NOT MATCH".to_string(),
+                                    );
                                     Ok((
                                         WithTemplate {
                                             name: "secure",
-                                            value: storage::Data {
-                                                data_type: "".to_string(),
-                                                path: "".to_string(),
-                                                value: serde_json::Value::String(
-                                                    "TOKENS DID NOT MATCH".to_string(),
-                                                ),
-                                            },
+                                            value: template_values,
                                         },
                                         path,
                                         query_token,
@@ -155,10 +166,12 @@ mod filters {
                                 } else {
                                     storage::get(&url, path.clone()).await.map(|data| {
                                         println!("{:?}", data);
+                                        template_values
+                                            .insert("data".to_string(), data.value.to_string());
                                         Ok::<_, Rejection>((
                                             WithTemplate {
                                                 name: "secure",
-                                                value: data,
+                                                value: template_values,
                                             },
                                             path,
                                             query_token,
@@ -174,16 +187,12 @@ mod filters {
                                     })
                                 })?;
 
+                                template_values
+                                    .insert("data".to_string(), "COULD NOT GET TOKEN".to_string());
                                 Ok((
                                     WithTemplate {
                                         name: "secure",
-                                        value: storage::Data {
-                                            data_type: "".to_string(),
-                                            path: "".to_string(),
-                                            value: serde_json::Value::String(
-                                                "COULD NOT GET TOKEN".to_string(),
-                                            ),
-                                        },
+                                        value: template_values,
                                     },
                                     path,
                                     query_token,
@@ -218,8 +227,9 @@ mod filters {
 
         warp::path!("data" / String)
             .and(warp::get())
+            .and(warp::query::<WithCss>())
             .and(session::with_session(sess_store.clone()))
-            .and_then(move |path: String, mut sess: Session| {
+            .and_then(move |path: String, css: WithCss, mut sess: Session| {
                 println!("unsecure data route");
                 let sess_store = sess_store.clone();
                 async move {
@@ -230,6 +240,7 @@ mod filters {
                     let mut template_values = BTreeMap::new();
                     template_values.insert("path".to_string(), path.clone());
                     template_values.insert("token".to_string(), token.clone());
+                    template_values.insert("css".to_string(), css.css.clone());
                     println!("data changed? {}", sess.data_changed());
                     sess.regenerate();
                     let sid = sess_store

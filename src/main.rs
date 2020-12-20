@@ -103,7 +103,7 @@ mod filters {
         hb: Arc<Handlebars>,
     ) -> impl Filter<Extract = impl Reply + '_, Error = Rejection> + Clone {
         // Create a reusable closure to render template
-        let handlebars = move |(with_template, sid, path, token): (_, String, String, String)| {
+        let handlebars = move |(with_template, path, token): (_, String, String)| {
             let hb = hb.clone();
 
             async move {
@@ -111,8 +111,8 @@ mod filters {
                     render(with_template, hb),
                     "Set-Cookie",
                     format!(
-                        "sid={}; Max-Age=0; SameSite=Strict; Path=/data/{}/{}; HttpOnly",
-                        sid, path, token
+                        "sid=; Max-Age=0; SameSite=Strict; Path=/data/{}/{}; HttpOnly",
+                        path, token
                     ),
                 ))
             }
@@ -123,26 +123,19 @@ mod filters {
             .and(warp::any().map(move || storage_url.clone()))
             .and(session::with_session(sess_store.clone()))
             .and_then(
-                move |path: String, query_token: String, url: String, mut sess: Session| {
+                move |path: String, query_token: String, url: String, sess: Session| {
                     let sess_store = sess_store.clone();
                     async move {
                         println!("secure data route");
                         println!("path: {}, query_token: {}", path, query_token);
                         match sess.get("token") {
                             Some::<String>(sess_token) => {
-                                println!("sess: {:?}", sess);
-                                sess.remove("token");
-                                println!("sess: {:?}", sess);
-                                let sid = sess_store
-                                    .store_session(sess)
-                                    .await
-                                    .map_err(|source| {
-                                        println!("error storing session: {:?}", source);
-                                        warp::reject::custom(session::SessionError::StoreError {
-                                            source,
-                                        })
-                                    })?
-                                    .unwrap();
+                                sess_store.destroy_session(sess).await.map_err(|source| {
+                                    println!("error storing session: {:?}", source);
+                                    warp::reject::custom(session::SessionError::StoreError {
+                                        source,
+                                    })
+                                })?;
 
                                 if sess_token != query_token {
                                     Ok((
@@ -156,7 +149,6 @@ mod filters {
                                                 ),
                                             },
                                         },
-                                        sid,
                                         path,
                                         query_token,
                                     ))
@@ -168,7 +160,6 @@ mod filters {
                                                 name: "secure",
                                                 value: data,
                                             },
-                                            sid,
                                             path,
                                             query_token,
                                         ))
@@ -176,17 +167,12 @@ mod filters {
                                 }
                             }
                             None => {
-                                let sid = sess_store
-                                    .store_session(sess)
-                                    .await
-                                    // .map_err(|source| {
-                                    //     println!("error storing session: {:?}", source);
-                                    //     warp::reject::custom(session::SessionError::StoreError {
-                                    //         source,
-                                    //     })
-                                    // })?
-                                    .unwrap()
-                                    .unwrap();
+                                sess_store.destroy_session(sess).await.map_err(|source| {
+                                    println!("error storing session: {:?}", source);
+                                    warp::reject::custom(session::SessionError::StoreError {
+                                        source,
+                                    })
+                                })?;
 
                                 Ok((
                                     WithTemplate {
@@ -199,7 +185,6 @@ mod filters {
                                             ),
                                         },
                                     },
-                                    sid,
                                     path,
                                     query_token,
                                 ))

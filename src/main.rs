@@ -70,6 +70,7 @@ mod filters {
     use crate::token;
     use handlebars::Handlebars;
     use serde::{Deserialize, Serialize};
+    use serde_json::Value::{Bool, Null, Number, String as SerdeString};
     use std::{collections::BTreeMap, sync::Arc};
     use warp::{Filter, Rejection, Reply};
 
@@ -170,8 +171,14 @@ mod filters {
                                 } else {
                                     storage::get(&url, path.clone()).await.map(|data| {
                                         println!("{:?}", data);
-                                        template_values
-                                            .insert("data".to_string(), data.value.to_string());
+                                        let val = match data.value {
+                                            Null => "".to_string(),
+                                            Bool(b) => b.to_string(),
+                                            Number(n) => n.to_string(),
+                                            SerdeString(s) => s.to_string(),
+                                            _ => "".to_string(),
+                                        };
+                                        template_values.insert("data".to_string(), val);
                                         Ok::<_, Rejection>((
                                             WithTemplate {
                                                 name: "secure",

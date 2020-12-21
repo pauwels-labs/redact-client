@@ -90,7 +90,7 @@ mod filters {
 
     #[derive(Deserialize, Serialize)]
     struct WithCss {
-        css: String,
+        css: Option<String>,
     }
 
     pub fn data<T: SessionStore>(
@@ -136,7 +136,11 @@ mod filters {
                       sess: Session| {
                     let sess_store = sess_store.clone();
                     let mut template_values = BTreeMap::new();
-                    template_values.insert("css".to_string(), css.css.clone());
+
+                    match css.css {
+                        Some(css_str) => template_values.insert("css".to_string(), css_str),
+                        _ => None,
+                    };
 
                     async move {
                         println!("secure data route");
@@ -240,8 +244,12 @@ mod filters {
                     let mut template_values = BTreeMap::new();
                     template_values.insert("path".to_string(), path.clone());
                     template_values.insert("token".to_string(), token.clone());
-                    template_values.insert("css".to_string(), css.css.clone());
-                    println!("data changed? {}", sess.data_changed());
+
+                    match css.css {
+                        Some(css_str) => template_values.insert("css".to_string(), css_str),
+                        _ => None,
+                    };
+
                     sess.regenerate();
                     let sid = sess_store
                         .store_session(sess)

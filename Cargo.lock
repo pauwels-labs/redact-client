@@ -1532,6 +1532,7 @@ dependencies = [
  "async-trait",
  "futures",
  "handlebars",
+ "hyper",
  "rand 0.7.3",
  "reqwest",
  "rust-config",

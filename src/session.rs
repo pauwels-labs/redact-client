@@ -31,7 +31,7 @@ pub struct SessionWithStore<S: SessionStore> {
 
 pub mod request {
     use super::{CookieOptions, Session, SessionError, SessionStore, SessionWithStore};
-    use warp::{reject, Filter, Rejection};
+    use warp::{Filter, Rejection};
 
     pub fn with_session<T: SessionStore>(
         session_store: T,

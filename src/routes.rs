@@ -12,22 +12,22 @@ pub mod data {
         use warp::{Filter, Rejection, Reply};
 
         #[derive(Deserialize, Serialize)]
-        pub struct WithoutTokenQueryParams {
+        struct WithoutTokenQueryParams {
             css: Option<String>,
         }
 
         #[derive(Deserialize, Serialize)]
-        pub struct WithoutTokenPathParams {
+        struct WithoutTokenPathParams {
             path: String,
         }
 
         #[derive(Deserialize, Serialize)]
-        pub struct WithTokenQueryParams {
+        struct WithTokenQueryParams {
             css: Option<String>,
         }
 
         #[derive(Deserialize, Serialize)]
-        pub struct WithTokenPathParams {
+        struct WithTokenPathParams {
             path: String,
             token: String,
         }

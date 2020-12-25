@@ -89,7 +89,7 @@ pub mod data {
                                     name: "unsecure",
                                     value: template_values,
                                 },
-                            ),
+                            )?,
                             path_params,
                             session_with_store,
                             token,
@@ -98,7 +98,7 @@ pub mod data {
                 )
                 .untuple_one()
                 .and_then(
-                    move |reply: Rendered<R, std::collections::HashMap<String, String>>,
+                    move |reply: Rendered,
                           path_params: WithoutTokenPathParams,
                           mut session_with_store: SessionWithStore<S>,
                           token: String| async move {
@@ -178,7 +178,7 @@ pub mod data {
                                                 name: "secure",
                                                 value: template_values,
                                             },
-                                        ),
+                                        )?,
                                         session_with_store,
                                     ))
                                 } else {
@@ -198,7 +198,7 @@ pub mod data {
                                                     name: "secure",
                                                     value: template_values,
                                                 },
-                                            ),
+                                            )?,
                                             session_with_store,
                                         ))
                                     })?
@@ -214,7 +214,7 @@ pub mod data {
                                             name: "secure",
                                             value: template_values,
                                         },
-                                    ),
+                                    )?,
                                     session_with_store,
                                 ))
                             }

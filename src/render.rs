@@ -2,7 +2,10 @@ use handlebars::{Handlebars, RenderError as HandlebarsRenderError};
 use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
-use warp::Reply;
+use warp::{
+    reject::{self, Reject},
+    Rejection, Reply,
+};
 
 #[derive(Error, Debug)]
 pub enum RenderError {
@@ -10,33 +13,37 @@ pub enum RenderError {
     HandlebarsError { source: HandlebarsRenderError },
 }
 
+impl Reject for RenderError {}
+
+impl std::convert::From<RenderError> for Rejection {
+    fn from(error: RenderError) -> Self {
+        reject::custom(error)
+    }
+}
+
 pub struct RenderTemplate<T: Serialize + Send> {
     pub name: &'static str,
     pub value: T,
 }
 
-pub struct Rendered<R: Renderer, T: Serialize + Send> {
-    render_engine: R,
-    render_template: RenderTemplate<T>,
+pub struct Rendered {
+    reply: warp::reply::Html<String>,
 }
 
-impl<R: Renderer, T: Serialize + Send> Rendered<R, T> {
-    pub fn new(render_engine: R, render_template: RenderTemplate<T>) -> Rendered<R, T> {
-        Rendered {
-            render_engine,
-            render_template,
-        }
+impl Rendered {
+    pub fn new<E: Renderer, T: Serialize + Send>(
+        render_engine: E,
+        render_template: RenderTemplate<T>,
+    ) -> Result<Rendered, RenderError> {
+        let reply = warp::reply::html(render_engine.render(render_template)?);
+
+        Ok(Rendered { reply })
     }
 }
 
-impl<R: Renderer, T: Serialize + Send> Reply for Rendered<R, T> {
+impl Reply for Rendered {
     fn into_response(self) -> warp::reply::Response {
-        warp::reply::html(
-            self.render_engine
-                .render(self.render_template)
-                .unwrap_or_else(|err| err.to_string()),
-        )
-        .into_response()
+        self.reply.into_response()
     }
 }
 

@@ -32,20 +32,6 @@ pub mod data {
             token: String,
         }
 
-        pub fn all<S: SessionStore, R: Renderer, T: Storer>(
-            session_store: S,
-            render_engine: R,
-            data_store: T,
-        ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
-            warp::get().and(
-                without_token(session_store.clone(), render_engine.clone()).or(with_token(
-                    session_store,
-                    render_engine,
-                    data_store,
-                )),
-            )
-        }
-
         pub fn without_token<S: SessionStore, R: Renderer>(
             session_store: S,
             render_engine: R,

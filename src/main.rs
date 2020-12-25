@@ -57,7 +57,11 @@ async fn main() {
 
     // Build out routes
     let health_route = warp::path!("healthz").map(|| warp::reply::json(&Healthz {}));
-    let data_routes = routes::data::get::all(session_store, render_engine, data_store);
+    let data_routes = warp::get().and(
+        routes::data::get::without_token(session_store.clone(), render_engine.clone()).or(
+            routes::data::get::with_token(session_store, render_engine, data_store),
+        ),
+    );
 
     // Start the server
     println!("starting server listening on ::{}", port);

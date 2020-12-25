@@ -46,10 +46,6 @@ pub mod data {
             )
         }
 
-        pub fn generate_token() -> impl Filter<Extract = (String,), Error = Rejection> + Clone {
-            warp::any().and_then(|| async move { Ok::<_, Rejection>(token::generate_token()?) })
-        }
-
         pub fn without_token<S: SessionStore, R: Renderer>(
             session_store: S,
             render_engine: R,
@@ -227,6 +223,10 @@ pub mod data {
                 )
                 .untuple_one()
                 .and_then(session::WithSession::new)
+        }
+
+        pub fn generate_token() -> impl Filter<Extract = (String,), Error = Rejection> + Clone {
+            warp::any().and_then(|| async move { Ok::<_, Rejection>(token::generate_token()?) })
         }
     }
 }

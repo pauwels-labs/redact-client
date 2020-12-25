@@ -1,4 +1,4 @@
-use handlebars::{Handlebars, RenderError as HandlebarsRenderError};
+use handlebars::{Handlebars, RenderError as HandlebarsRenderError, TemplateFileError};
 use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
@@ -10,7 +10,9 @@ use warp::{
 #[derive(Error, Debug)]
 pub enum RenderError {
     #[error("Failure happened during render")]
-    HandlebarsError { source: HandlebarsRenderError },
+    RenderError { source: HandlebarsRenderError },
+    #[error("Failed to load template file")]
+    TemplateFileError { source: TemplateFileError },
 }
 
 impl Reject for RenderError {}
@@ -18,6 +20,12 @@ impl Reject for RenderError {}
 impl std::convert::From<RenderError> for Rejection {
     fn from(error: RenderError) -> Self {
         reject::custom(error)
+    }
+}
+
+impl std::convert::From<TemplateFileError> for RenderError {
+    fn from(source: TemplateFileError) -> Self {
+        RenderError::TemplateFileError { source }
     }
 }
 
@@ -60,12 +68,14 @@ pub struct HandlebarsRenderer<'reg> {
 }
 
 impl<'reg> HandlebarsRenderer<'reg> {
-    pub fn new(template_mapping: HashMap<&str, &str>) -> HandlebarsRenderer<'reg> {
+    pub fn new(
+        template_mapping: HashMap<&str, &str>,
+    ) -> Result<HandlebarsRenderer<'reg>, RenderError> {
         let mut hbs = Handlebars::new();
         for (key, val) in template_mapping.iter() {
-            hbs.register_template_file(key, val).unwrap();
+            hbs.register_template_file(key, val)?;
         }
-        HandlebarsRenderer { hbs: Arc::new(hbs) }
+        Ok(HandlebarsRenderer { hbs: Arc::new(hbs) })
     }
 }
 
@@ -76,6 +86,6 @@ impl<'reg> Renderer for HandlebarsRenderer<'reg> {
     ) -> Result<String, RenderError> {
         self.hbs
             .render(template.name, &template.value)
-            .map_err(|source| RenderError::HandlebarsError { source })
+            .map_err(|source| RenderError::RenderError { source })
     }
 }

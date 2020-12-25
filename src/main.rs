@@ -46,7 +46,7 @@ async fn main() {
     let mut template_mapping = HashMap::new();
     template_mapping.insert("unsecure", "./static/unsecure.handlebars");
     template_mapping.insert("secure", "./static/secure.handlebars");
-    let render_engine = HandlebarsRenderer::new(template_mapping);
+    let render_engine = HandlebarsRenderer::new(template_mapping).unwrap();
 
     // Get storage handle
     let storage_url = config.get_str("storage.url").unwrap();

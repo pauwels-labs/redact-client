@@ -1,4 +1,3 @@
-//mod handlers;
 mod render;
 mod routes;
 mod session;

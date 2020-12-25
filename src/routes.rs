@@ -105,20 +105,18 @@ pub mod data {
                     move |reply: Rendered<R, std::collections::HashMap<String, String>>,
                           path_params: WithoutTokenPathParams,
                           mut session_with_store: SessionWithStore<S>,
-                          token: String| {
-                        async move {
-                            session_with_store
-                                .session
-                                .insert("token", token.clone())
-                                .map_err(|_| warp::reject())?;
-                            session_with_store.cookie_options.path = Some(format!(
-                                "/data/{}/{}",
-                                path_params.path.clone(),
-                                token.clone()
-                            ));
+                          token: String| async move {
+                        session_with_store
+                            .session
+                            .insert("token", token.clone())
+                            .map_err(|_| warp::reject())?;
+                        session_with_store.cookie_options.path = Some(format!(
+                            "/data/{}/{}",
+                            path_params.path.clone(),
+                            token.clone()
+                        ));
 
-                            Ok::<_, Rejection>((reply, session_with_store))
-                        }
+                        Ok::<_, Rejection>((reply, session_with_store))
                     },
                 )
                 .untuple_one()
@@ -169,10 +167,9 @@ pub mod data {
                             _ => None,
                         };
 
+                        session_with_store.session.destroy();
                         match session_with_store.session.get("token") {
                             Some::<String>(session_token) => {
-                                session_with_store.session.destroy();
-
                                 if session_token != path_params.token {
                                     template_values.insert(
                                         "data".to_string(),
@@ -212,8 +209,6 @@ pub mod data {
                                 }
                             }
                             None => {
-                                session_with_store.session.destroy();
-
                                 template_values
                                     .insert("data".to_string(), "COULD NOT GET TOKEN".to_string());
                                 Ok::<_, Rejection>((

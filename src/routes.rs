@@ -134,22 +134,15 @@ pub mod data {
                 .and_then(
                     move |path_params: WithTokenPathParams,
                           query_params: WithTokenQueryParams,
-                          mut session_with_store: SessionWithStore<S>,
+                          session_with_store: SessionWithStore<S>,
                           render_engine: R,
                           data_store: T| async move {
                         let mut template_values = HashMap::new();
-                        session_with_store.cookie_options.path = Some(format!(
-                            "/data/{}/{}",
-                            path_params.path.clone(),
-                            path_params.token.clone()
-                        ));
-
                         match query_params.css {
                             Some(css) => template_values.insert("css".to_string(), css),
                             _ => None,
                         };
 
-                        session_with_store.session.destroy();
                         match session_with_store.session.get("token") {
                             Some::<String>(session_token) => {
                                 if session_token != path_params.token {
@@ -165,6 +158,7 @@ pub mod data {
                                                 value: template_values,
                                             },
                                         )?,
+                                        path_params,
                                         session_with_store,
                                     ))
                                 } else {
@@ -185,6 +179,7 @@ pub mod data {
                                                     value: template_values,
                                                 },
                                             )?,
+                                            path_params,
                                             session_with_store,
                                         ))
                                     })?
@@ -201,10 +196,25 @@ pub mod data {
                                             value: template_values,
                                         },
                                     )?,
+                                    path_params,
                                     session_with_store,
                                 ))
                             }
                         }
+                    },
+                )
+                .untuple_one()
+                .and_then(
+                    move |reply: Rendered,
+                          path_params: WithTokenPathParams,
+                          mut session_with_store: SessionWithStore<S>| async move {
+                        session_with_store.cookie_options.path = Some(format!(
+                            "/data/{}/{}",
+                            path_params.path.clone(),
+                            path_params.token.clone()
+                        ));
+                        session_with_store.session.destroy();
+                        Ok::<_, Rejection>((reply, session_with_store))
                     },
                 )
                 .untuple_one()

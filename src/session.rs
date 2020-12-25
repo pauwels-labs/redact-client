@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use thiserror::Error;
 use warp::{
     reject::{self, Reject},
-    Filter, Rejection, Reply,
+    Rejection, Reply,
 };
 
 #[derive(Error, Debug)]
@@ -17,56 +17,79 @@ pub enum SessionError {
 
 impl Reject for SessionError {}
 
+impl std::convert::From<SessionError> for Rejection {
+    fn from(error: SessionError) -> Self {
+        reject::custom(error)
+    }
+}
+
 pub struct SessionWithStore<S: SessionStore> {
     pub session: Session,
     pub session_store: S,
     pub cookie_options: CookieOptions,
 }
 
-pub fn with_session<T: SessionStore>(
-    session_store: T,
-    cookie_options: Option<CookieOptions>,
-) -> impl Filter<Extract = (SessionWithStore<T>,), Error = Rejection> + Clone {
-    let cookie_options = match cookie_options {
-        Some(co) => co,
-        None => CookieOptions::default(),
-    };
-    warp::any()
-        .and(warp::any().map(move || session_store.clone()))
-        .and(warp::cookie::optional("sid"))
-        .and(warp::any().map(move || cookie_options.clone()))
-        .and_then(
-            |session_store: T,
-             sid_cookie: Option<String>,
-             cookie_options: CookieOptions| async move {
-                 match sid_cookie {
-                     Some(sid) => match session_store.load_session(sid).await {
-                         Ok(Some(session)) => {
-                             Ok(SessionWithStore {
-                                 session,
-                                 session_store,
-				 cookie_options,
-                             })
-                        }
-                        Ok(None) => {
-                            Ok(SessionWithStore {
-                                session: Session::new(),
-                                session_store,
+pub mod request {
+    use super::{CookieOptions, Session, SessionError, SessionStore, SessionWithStore};
+    use warp::{reject, Filter, Rejection};
+
+    pub fn with_session<T: SessionStore>(
+        session_store: T,
+        cookie_options: Option<CookieOptions>,
+    ) -> impl Filter<Extract = (SessionWithStore<T>,), Error = Rejection> + Clone {
+        let cookie_options = match cookie_options {
+            Some(co) => co,
+            None => CookieOptions::default(),
+        };
+        warp::any()
+            .and(warp::any().map(move || session_store.clone()))
+            .and(warp::cookie::optional("sid"))
+            .and(warp::any().map(move || cookie_options.clone()))
+            .and_then(
+		|session_store: T,
+		sid_cookie: Option<String>,
+		cookie_options: CookieOptions| async move {
+                    match sid_cookie {
+			Some(sid) => match session_store.load_session(sid).await {
+                            Ok(Some(session)) => {
+				Ok::<_, Rejection>(SessionWithStore {
+                                    session,
+                                    session_store,
+				    cookie_options,
+				})
+                            }
+                            Ok(None) => {
+				Ok::<_, Rejection>(SessionWithStore {
+                                    session: Session::new(),
+                                    session_store,
+				    cookie_options,
+				})
+                            }
+                            Err(source) => Err(Rejection::from(SessionError::LoadError { source })),
+			},
+			None => {
+                            Ok::<_, Rejection>(SessionWithStore {
+				session: Session::new(),
+				session_store,
 				cookie_options,
                             })
-                        }
-                        Err(source) => Err(reject::custom(SessionError::LoadError { source })),
-                    },
-                    None => {
-                        Ok(SessionWithStore {
-                            session: Session::new(),
-                            session_store,
-			    cookie_options,
-                        })
+			}
                     }
-                }
-            },
-        )
+		},
+            )
+    }
+}
+
+pub mod reply {
+    use super::{SessionStore, SessionWithStore, WithSession};
+    use warp::Reply;
+
+    pub async fn with_session<T: Reply, S: SessionStore>(
+        reply: T,
+        session_with_store: SessionWithStore<S>,
+    ) -> Result<WithSession<T, S>, std::convert::Infallible> {
+        WithSession::new(reply, session_with_store).await
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]

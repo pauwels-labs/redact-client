@@ -59,7 +59,11 @@ async fn main() {
     let health_route = warp::path!("healthz").map(|| warp::reply::json(&Healthz {}));
     let data_routes = warp::get().and(
         routes::data::get::without_token(session_store.clone(), render_engine.clone()).or(
-            routes::data::get::with_token(session_store, render_engine, data_store),
+            routes::data::get::with_token(
+                session_store.clone(),
+                render_engine.clone(),
+                data_store.clone(),
+            ),
         ),
     );
 

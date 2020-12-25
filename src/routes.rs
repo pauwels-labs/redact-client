@@ -39,7 +39,7 @@ pub mod data {
             warp::any()
                 .and(warp::path!("data" / String).map(|path| WithoutTokenPathParams { path }))
                 .and(warp::query::<WithoutTokenQueryParams>())
-                .and(session::with_session(
+                .and(session::request::with_session(
                     session_store,
                     Some(CookieOptions {
                         cookie_name: "sid".to_string(),
@@ -102,7 +102,7 @@ pub mod data {
                     },
                 )
                 .untuple_one()
-                .and_then(session::WithSession::new)
+                .and_then(session::reply::with_session)
         }
 
         pub fn with_token<S: SessionStore, R: Renderer, T: Storer>(
@@ -116,7 +116,7 @@ pub mod data {
                         .map(|path, token| WithTokenPathParams { path, token }),
                 )
                 .and(warp::query::<WithTokenQueryParams>())
-                .and(session::with_session(
+                .and(session::request::with_session(
                     session_store,
                     Some(CookieOptions {
                         cookie_name: "sid".to_string(),
@@ -208,7 +208,7 @@ pub mod data {
                     },
                 )
                 .untuple_one()
-                .and_then(session::WithSession::new)
+                .and_then(session::reply::with_session)
         }
 
         pub fn generate_token() -> impl Filter<Extract = (String,), Error = Rejection> + Clone {

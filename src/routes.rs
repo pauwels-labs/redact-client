@@ -146,10 +146,7 @@ pub mod data {
                         match session_with_store.session.get("token") {
                             Some::<String>(session_token) => {
                                 if session_token != path_params.token {
-                                    template_values.insert(
-                                        "data".to_string(),
-                                        "TOKENS DID NOT MATCH".to_string(),
-                                    );
+                                    template_values.insert("data".to_string(), "".to_string());
                                     Ok::<_, Rejection>((
                                         Rendered::new(
                                             render_engine,
@@ -186,8 +183,7 @@ pub mod data {
                                 }
                             }
                             None => {
-                                template_values
-                                    .insert("data".to_string(), "COULD NOT GET TOKEN".to_string());
+                                template_values.insert("data".to_string(), "".to_string());
                                 Ok::<_, Rejection>((
                                     Rendered::new(
                                         render_engine,

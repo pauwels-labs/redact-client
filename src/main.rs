@@ -2,13 +2,15 @@ mod render;
 mod routes;
 mod session;
 mod storage;
-mod token;
+pub mod token;
 
 use render::HandlebarsRenderer;
 use rust_config::Configurator;
 use serde::Serialize;
 use session::MemoryStore;
 use std::collections::HashMap;
+use storage::RedactStorer;
+use token::FromThreadRng;
 use warp::Filter;
 
 #[derive(Serialize)]
@@ -50,21 +52,27 @@ async fn main() {
 
     // Get storage handle
     let storage_url = config.get_str("storage.url").unwrap();
-    let data_store = storage::RedactStorer::new(&storage_url);
+    let data_store = RedactStorer::new(&storage_url);
 
     // Create an in-memory session store
     let session_store = MemoryStore::new();
 
+    // Create a token generator
+    let token_generator = FromThreadRng::new();
+
     // Build out routes
     let health_route = warp::path!("healthz").map(|| warp::reply::json(&Healthz {}));
     let data_routes = warp::get().and(
-        routes::data::get::without_token(session_store.clone(), render_engine.clone()).or(
-            routes::data::get::with_token(
-                session_store.clone(),
-                render_engine.clone(),
-                data_store.clone(),
-            ),
-        ),
+        routes::data::get::without_token(
+            session_store.clone(),
+            render_engine.clone(),
+            token_generator.clone(),
+        )
+        .or(routes::data::get::with_token(
+            session_store.clone(),
+            render_engine.clone(),
+            data_store.clone(),
+        )),
     );
 
     // Start the server

@@ -5,7 +5,7 @@ pub mod data {
             self, CookieOptions, SameSiteCookieOption, SessionStore, SessionWithStore,
         };
         use crate::storage::Storer;
-        use crate::token;
+        use crate::token::TokenGenerator;
         use serde::{Deserialize, Serialize};
         use serde_json::Value::{Bool, Null, Number, String as SerdeString};
         use std::collections::HashMap;
@@ -32,9 +32,10 @@ pub mod data {
             token: String,
         }
 
-        pub fn without_token<S: SessionStore, R: Renderer>(
+        pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
             session_store: S,
             render_engine: R,
+            token_generator: T,
         ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
             warp::any()
                 .and(warp::path!("data" / String).map(|path| WithoutTokenPathParams { path }))
@@ -52,7 +53,7 @@ pub mod data {
                         same_site: Some(SameSiteCookieOption::Strict),
                     }),
                 ))
-                .and(generate_token())
+                .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
                 .and(warp::any().map(move || render_engine.clone()))
                 .and_then(
                     move |path_params: WithoutTokenPathParams,
@@ -215,10 +216,6 @@ pub mod data {
                 )
                 .untuple_one()
                 .and_then(session::reply::with_session)
-        }
-
-        pub fn generate_token() -> impl Filter<Extract = (String,), Error = Rejection> + Clone {
-            warp::any().and_then(|| async move { Ok::<_, Rejection>(token::generate_token()?) })
         }
     }
 }

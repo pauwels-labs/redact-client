@@ -55,13 +55,3 @@ impl Storer for RedactStorer {
         }
     }
 }
-
-// pub async fn get(url: &str, path: String) -> Result<Data, Rejection> {
-//     match reqwest::get(&format!("{}/data?path={}", url, path)).await {
-//         Ok(r) => Ok(r
-//             .json::<Data>()
-//             .await
-//             .map_err(|source| reject::custom(StorageError::DeserializationError { source }))?),
-//         Err(source) => Err(reject::custom(StorageError::FetchError { source })),
-//     }
-// }

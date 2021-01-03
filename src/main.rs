@@ -16,13 +16,8 @@ use warp::Filter;
 #[derive(Serialize)]
 struct Healthz {}
 
-#[tokio::main]
-async fn main() {
-    // Extract config with a REDACT env var prefix
-    let config = rust_config::new("REDACT").unwrap();
-
-    // Determine port to listen on
-    let port = match config.get_int("server.port") {
+fn get_port<T: Configurator>(config: &T) -> u16 {
+    match config.get_int("server.port") {
         Ok(port) => {
             if port < 1 || port > 65535 {
                 println!(
@@ -42,7 +37,16 @@ async fn main() {
             }
             8080 as u16
         }
-    };
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    // Extract config with a REDACT env var prefix
+    let config = rust_config::new("REDACT").unwrap();
+
+    // Determine port to listen on
+    let port = get_port(&config);
 
     // Load HTML templates
     let mut template_mapping = HashMap::new();

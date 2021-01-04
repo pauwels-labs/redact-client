@@ -1,39 +1,74 @@
 pub mod data {
-    // pub mod post {
-    //     use crate::render::Renderer;
-    //     use crate::session::SessionStore;
-    //     use serde::{Deserialize, Serialize};
-    //     use warp::{Filter, Rejection, Reply};
+    pub mod post {
+        use crate::render::{RenderTemplate, Rendered, Renderer};
+        use serde::{Deserialize, Serialize};
+        use std::collections::HashMap;
+        use warp::{Filter, Rejection, Reply};
+        use warp_sessions::{
+            cookie::{CookieOptions, SameSiteCookieOption},
+            SessionStore, SessionWithStore,
+        };
 
-    //     #[derive(Deserialize, Serialize)]
-    //     struct SubmitDataQueryParams {
-    //         css: Option<String>,
-    //         edit: Option<bool>,
-    //     }
+        #[derive(Deserialize, Serialize)]
+        struct SubmitDataQueryParams {
+            token: Option<String>,
+        }
 
-    //     #[derive(Deserialize, Serialize)]
-    //     struct SubmitDataPathParams {
-    //         path: String,
-    //     }
+        #[derive(Deserialize, Serialize)]
+        struct SubmitDataPathParams {
+            path: String,
+        }
 
-    //     pub fn submit_data<S: SessionStore, R: Renderer>(
-    //         session_store: S,
-    //         render_engine: R,
-    //     ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
-    //         warp::any().and(warp::path!("data" / String).map(|path| SubmitDataPathParams { path }))
-    //     }
-    // }
+        pub fn submit_data<S: SessionStore, R: Renderer>(
+            session_store: S,
+            render_engine: R,
+        ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
+            warp::any()
+                .and(warp::path!("data" / String).map(|path| SubmitDataPathParams { path }))
+                .and(warp::query::<SubmitDataQueryParams>())
+                .and(warp_sessions::request::with_session(
+                    session_store,
+                    Some(CookieOptions {
+                        cookie_name: "sid".to_string(),
+                        cookie_value: None,
+                        max_age: Some(60),
+                        domain: None,
+                        path: None,
+                        secure: false,
+                        http_only: true,
+                        same_site: Some(SameSiteCookieOption::Strict),
+                    }),
+                ))
+                .and(warp::any().map(move || render_engine.clone()))
+                .and_then(
+                    move |path_params: SubmitDataPathParams,
+                          query_params: SubmitDataQueryParams,
+                          session_with_store: SessionWithStore<S>,
+                          render_engine: R| async move {
+                        Ok::<_, Rejection>(Rendered::new(
+                            render_engine,
+                            RenderTemplate {
+                                name: "unsecure",
+                                value: HashMap::<String, String>::new(),
+                            },
+                        )?)
+                    },
+                )
+        }
+    }
     pub mod get {
         use crate::render::{RenderTemplate, Rendered, Renderer};
-        use crate::session::{
-            self, CookieOptions, SameSiteCookieOption, SessionStore, SessionWithStore,
-        };
         use crate::storage::Storer;
         use crate::token::TokenGenerator;
         use serde::{Deserialize, Serialize};
         use serde_json::Value::{Bool, Null, Number, String as SerdeString};
         use std::collections::HashMap;
         use warp::{Filter, Rejection, Reply};
+        use warp_sessions::{
+            self,
+            cookie::{CookieOptions, SameSiteCookieOption},
+            SessionStore, SessionWithStore,
+        };
 
         #[derive(Deserialize, Serialize)]
         struct WithoutTokenQueryParams {
@@ -66,7 +101,7 @@ pub mod data {
             warp::any()
                 .and(warp::path!("data" / String).map(|path| WithoutTokenPathParams { path }))
                 .and(warp::query::<WithoutTokenQueryParams>())
-                .and(session::request::with_session(
+                .and(warp_sessions::request::with_session(
                     session_store,
                     Some(CookieOptions {
                         cookie_name: "sid".to_string(),
@@ -136,7 +171,7 @@ pub mod data {
                     },
                 )
                 .untuple_one()
-                .and_then(session::reply::with_session)
+                .and_then(warp_sessions::reply::with_session)
         }
 
         pub fn with_token<S: SessionStore, R: Renderer, T: Storer>(
@@ -150,7 +185,7 @@ pub mod data {
                         .map(|path, token| WithTokenPathParams { path, token }),
                 )
                 .and(warp::query::<WithTokenQueryParams>())
-                .and(session::request::with_session(
+                .and(warp_sessions::request::with_session(
                     session_store,
                     Some(CookieOptions {
                         cookie_name: "sid".to_string(),
@@ -257,7 +292,7 @@ pub mod data {
                     },
                 )
                 .untuple_one()
-                .and_then(session::reply::with_session)
+                .and_then(warp_sessions::reply::with_session)
         }
     }
 }

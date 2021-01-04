@@ -1,17 +1,16 @@
 mod render;
 mod routes;
-mod session;
 mod storage;
 pub mod token;
 
 use render::HandlebarsRenderer;
 use rust_config::Configurator;
 use serde::Serialize;
-use session::MemoryStore;
 use std::collections::HashMap;
 use storage::RedactStorer;
 use token::FromThreadRng;
 use warp::Filter;
+use warp_sessions::MemoryStore;
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -66,10 +65,10 @@ async fn main() {
 
     // Build out routes
     let health_route = warp::path!("healthz").map(|| warp::reply::json(&Healthz {}));
-    // let post_routes = warp::post().and(routes::data::post::submit_data(
-    //     session_store.clone(),
-    //     render_engine.clone(),
-    // ));
+    let post_routes = warp::post().and(routes::data::post::submit_data(
+        session_store.clone(),
+        render_engine.clone(),
+    ));
     let get_routes = warp::get().and(
         routes::data::get::without_token(
             session_store.clone(),
@@ -85,6 +84,6 @@ async fn main() {
 
     // Start the server
     println!("starting server listening on ::{}", port);
-    let routes = health_route.or(get_routes); //.or(post_routes);
+    let routes = health_route.or(get_routes).or(post_routes);
     warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 }

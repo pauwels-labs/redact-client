@@ -12,6 +12,9 @@ pub enum StorageError {
     #[error("Failed to fetch data")]
     FetchError { source: reqwest::Error },
 
+    #[error("Failed to create data")]
+    CreateError { source: reqwest::Error },
+
     #[error("Failed to deserialize data")]
     DeserializationError { source: reqwest::Error },
 }
@@ -28,6 +31,7 @@ pub struct Data {
 #[async_trait]
 pub trait Storer: Clone + Send + Sync {
     async fn get(&self, path: &str) -> Result<Data, Rejection>;
+    async fn create(&self, path: &str, value: Data) -> Result<bool, Rejection>;
 }
 
 #[derive(Clone)]
@@ -55,7 +59,15 @@ impl Storer for RedactStorer {
         }
     }
 
-    // async fn create(&self, path: &str, value: Data) -> Result<bool, Rejection> {
-    // 	match reqwest::Client::new().post(&format!("{}/data?path={}", self.url, path)).body()
-    // }
+    async fn create(&self, path: &str, value: Data) -> Result<bool, Rejection> {
+        match reqwest::Client::new()
+            .post(&format!("{}/data?path={}", self.url, path))
+            .json(&value)
+            .send()
+            .await
+        {
+            Ok(r) => Ok(true),
+            Err(source) => Err(reject::custom(StorageError::CreateError { source })),
+        }
+    }
 }

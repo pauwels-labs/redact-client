@@ -54,4 +54,8 @@ impl Storer for RedactStorer {
             Err(source) => Err(reject::custom(StorageError::FetchError { source })),
         }
     }
+
+    // async fn create(&self, path: &str, value: Data) -> Result<bool, Rejection> {
+    // 	match reqwest::Client::new().post(&format!("{}/data?path={}", self.url, path)).body()
+    // }
 }

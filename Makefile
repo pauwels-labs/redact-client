@@ -1,11 +1,11 @@
 run:
-	cargo run
+	@cargo r
 
 build:
-	cargo b
+	@cargo b
 
 build-release:
-	cargo b --release
+	@cargo b --release
 
 test:
-	cargo tarpaulin --out html
+	@cargo tarpaulin --out html

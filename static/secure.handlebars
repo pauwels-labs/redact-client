@@ -5,6 +5,13 @@
     </style>
   </head>
   <body>
+    {{ #if edit }}
+    <form action="/data/{{ path }}" method="POST">
+      <input type="text" value="{{ data }}" id="data" name="data">
+      <input type="submit" value="Submit" name="submit" id="submit">
+    </form>
+    {{ else }}
     <p>{{ data }}</p>
+    {{ /if }}
   </body>
 </html>

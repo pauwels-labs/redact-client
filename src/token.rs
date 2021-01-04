@@ -1,4 +1,4 @@
-use rand::{prelude::*, thread_rng, Rng};
+use rand::{thread_rng, Rng};
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, RwLock};
 use thiserror::Error;

@@ -1,4 +1,28 @@
 pub mod data {
+    // pub mod post {
+    //     use crate::render::Renderer;
+    //     use crate::session::SessionStore;
+    //     use serde::{Deserialize, Serialize};
+    //     use warp::{Filter, Rejection, Reply};
+
+    //     #[derive(Deserialize, Serialize)]
+    //     struct SubmitDataQueryParams {
+    //         css: Option<String>,
+    //         edit: Option<bool>,
+    //     }
+
+    //     #[derive(Deserialize, Serialize)]
+    //     struct SubmitDataPathParams {
+    //         path: String,
+    //     }
+
+    //     pub fn submit_data<S: SessionStore, R: Renderer>(
+    //         session_store: S,
+    //         render_engine: R,
+    //     ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
+    //         warp::any().and(warp::path!("data" / String).map(|path| SubmitDataPathParams { path }))
+    //     }
+    // }
     pub mod get {
         use crate::render::{RenderTemplate, Rendered, Renderer};
         use crate::session::{
@@ -14,6 +38,7 @@ pub mod data {
         #[derive(Deserialize, Serialize)]
         struct WithoutTokenQueryParams {
             css: Option<String>,
+            edit: Option<bool>,
         }
 
         #[derive(Deserialize, Serialize)]
@@ -24,6 +49,7 @@ pub mod data {
         #[derive(Deserialize, Serialize)]
         struct WithTokenQueryParams {
             css: Option<String>,
+            edit: Option<bool>,
         }
 
         #[derive(Deserialize, Serialize)]
@@ -64,8 +90,15 @@ pub mod data {
                         let mut template_values = HashMap::new();
                         template_values.insert("path".to_string(), path_params.path.clone());
                         template_values.insert("token".to_string(), token.clone());
+
                         match query_params.css {
                             Some(css) => template_values.insert("css".to_string(), css),
+                            _ => None,
+                        };
+                        match query_params.edit {
+                            Some(edit) => {
+                                template_values.insert("edit".to_string(), edit.to_string())
+                            }
                             _ => None,
                         };
 
@@ -143,6 +176,15 @@ pub mod data {
                             Some(css) => template_values.insert("css".to_string(), css),
                             _ => None,
                         };
+                        match query_params.edit {
+                            Some(edit) => {
+                                if edit {
+                                    template_values.insert("edit".to_string(), "true".to_string());
+                                }
+                            }
+                            _ => (),
+                        };
+                        template_values.insert("path".to_string(), path_params.path.clone());
 
                         match session_with_store.session.get("token") {
                             Some::<String>(session_token) => {

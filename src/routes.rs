@@ -397,31 +397,27 @@ pub mod data {
                                         session_with_store,
                                     ))
                                 } else {
-                                    data_store.get(&path_params.path).await.map(|data| {
-                                        let val = match data.value {
-                                            Null => "".to_string(),
-                                            Bool(b) => b.to_string(),
-                                            Number(n) => n.to_string(),
-                                            SerdeString(s) => s.to_string(),
-                                            _ => "".to_string(),
-                                        };
-                                        template_values.insert("data".to_string(), val);
-                                        template_values
-                                            .insert("data_type".to_string(), data.data_type);
-                                        Ok::<_, Rejection>((
-                                            Rendered::new(
-                                                render_engine,
-                                                RenderTemplate {
-                                                    name: "secure",
-                                                    value: template_values,
-                                                },
-                                            )?,
-                                            path_params,
-                                            query_params,
-                                            token,
-                                            session_with_store,
-                                        ))
-                                    })?
+                                    let (value, data_type): (String, String) =
+                                        data_store.get(&path_params.path).await.map_or_else(
+                                            |e| ("".to_string(), "string".to_string()),
+                                            |data| (data.value.to_string(), data.data_type),
+                                        );
+                                    template_values.insert("data".to_string(), value);
+                                    template_values.insert("data_type".to_string(), data_type);
+
+                                    Ok::<_, Rejection>((
+                                        Rendered::new(
+                                            render_engine,
+                                            RenderTemplate {
+                                                name: "secure",
+                                                value: template_values,
+                                            },
+                                        )?,
+                                        path_params,
+                                        query_params,
+                                        token.clone(),
+                                        session_with_store,
+                                    ))
                                 }
                             }
                             None => {

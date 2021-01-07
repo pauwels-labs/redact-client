@@ -19,7 +19,7 @@ pub mod data {
 
         #[derive(Deserialize, Serialize)]
         struct SubmitDataBodyParams {
-            data: String,
+            data: Value,
             data_type: String,
         }
 
@@ -58,9 +58,14 @@ pub mod data {
                           token: String,
                           render_engine: R,
                           data_store: D| async move {
+                        let data_str = match body_params.data.as_str() {
+                            Some(s) => s,
+                            None => "",
+                        };
+
                         let mut template_values = HashMap::new();
                         template_values.insert("path".to_string(), path_params.path.clone());
-                        template_values.insert("data".to_string(), body_params.data.clone());
+                        template_values.insert("data".to_string(), data_str.to_string());
                         template_values
                             .insert("data_type".to_string(), body_params.data_type.clone());
                         template_values.insert("edit".to_string(), "true".to_string());
@@ -81,49 +86,13 @@ pub mod data {
                                         session_with_store,
                                     ))
                                 } else {
-                                    let val = match body_params.data_type.as_str() {
-                                        "string" => Ok(Value::from(body_params.data.clone())),
-                                        "boolean" => {
-                                            let data: bool = body_params
-                                                .data
-                                                .clone()
-                                                .parse()
-                                                .map_err(|_| warp::reject())?;
-                                            Ok(Value::from(data))
-                                        }
-                                        "f64" => {
-                                            let data: f64 = body_params
-                                                .data
-                                                .clone()
-                                                .parse()
-                                                .map_err(|_| warp::reject())?;
-                                            Ok(Value::from(data))
-                                        }
-                                        "i64" => {
-                                            let data: i64 = body_params
-                                                .data
-                                                .clone()
-                                                .parse()
-                                                .map_err(|_| warp::reject())?;
-                                            Ok(Value::from(data))
-                                        }
-                                        "u64" => {
-                                            let data: u64 = body_params
-                                                .data
-                                                .clone()
-                                                .parse()
-                                                .map_err(|_| warp::reject())?;
-                                            Ok(Value::from(data))
-                                        }
-                                        _ => Err(warp::reject()),
-                                    }?;
                                     data_store
                                         .create(
                                             &path_params.path,
                                             Data {
                                                 data_type: body_params.data_type.clone(),
                                                 path: path_params.path.clone(),
-                                                value: val,
+                                                value: body_params.data.clone(),
                                             },
                                         )
                                         .await
@@ -140,8 +109,7 @@ pub mod data {
                                                 token,
                                                 session_with_store,
                                             ))
-                                        })
-                                        .map_err(|e| e)?
+                                        })?
                                 }
                             }
                             None => Ok::<_, Rejection>((
@@ -157,14 +125,6 @@ pub mod data {
                                 session_with_store,
                             )),
                         }
-
-                        // Ok::<_, Rejection>(Rendered::new(
-                        //     render_engine,
-                        //     RenderTemplate {
-                        //         name: "unsecure",
-                        //         value: HashMap::<String, String>::new(),
-                        //     },
-                        // )?)
                     },
                 )
                 .untuple_one()

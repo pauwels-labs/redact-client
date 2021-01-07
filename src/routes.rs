@@ -140,7 +140,8 @@ pub mod data {
                                                 token,
                                                 session_with_store,
                                             ))
-                                        })?
+                                        })
+                                        .map_err(|e| e)?
                                 }
                             }
                             None => Ok::<_, Rejection>((
@@ -217,7 +218,6 @@ pub mod data {
         use crate::storage::Storer;
         use crate::token::TokenGenerator;
         use serde::{Deserialize, Serialize};
-        use serde_json::Value::{Bool, Null, Number, String as SerdeString};
         use std::collections::HashMap;
         use warp::{Filter, Rejection, Reply};
         use warp_sessions::{
@@ -400,7 +400,13 @@ pub mod data {
                                     let (value, data_type): (String, String) =
                                         data_store.get(&path_params.path).await.map_or_else(
                                             |e| ("".to_string(), "string".to_string()),
-                                            |data| (data.value.to_string(), data.data_type),
+                                            |data| {
+                                                let val_str = match data.value.as_str() {
+                                                    Some(s) => s.to_owned(),
+                                                    None => "".to_string(),
+                                                };
+                                                (val_str, data.data_type)
+                                            },
                                         );
                                     template_values.insert("data".to_string(), value);
                                     template_values.insert("data_type".to_string(), data_type);

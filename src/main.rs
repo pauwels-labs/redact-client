@@ -68,6 +68,8 @@ async fn main() {
     let post_routes = warp::post().and(routes::data::post::submit_data(
         session_store.clone(),
         render_engine.clone(),
+        token_generator.clone(),
+        data_store.clone(),
     ));
     let get_routes = warp::get().and(
         routes::data::get::without_token(
@@ -78,6 +80,7 @@ async fn main() {
         .or(routes::data::get::with_token(
             session_store.clone(),
             render_engine.clone(),
+            token_generator.clone(),
             data_store.clone(),
         )),
     );

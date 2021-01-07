@@ -1,35 +1,44 @@
 pub mod data {
     pub mod post {
         use crate::render::{RenderTemplate, Rendered, Renderer};
+        use crate::storage::{Data, Storer};
+        use crate::token::TokenGenerator;
         use serde::{Deserialize, Serialize};
+        use serde_json::Value;
         use std::collections::HashMap;
         use warp::{Filter, Rejection, Reply};
         use warp_sessions::{
-            cookie::{CookieOptions, SameSiteCookieOption},
-            SessionStore, SessionWithStore,
+            CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
         };
-
-        #[derive(Deserialize, Serialize)]
-        struct SubmitDataQueryParams {
-            token: Option<String>,
-        }
 
         #[derive(Deserialize, Serialize)]
         struct SubmitDataPathParams {
             path: String,
+            token: String,
         }
 
-        pub fn submit_data<S: SessionStore, R: Renderer>(
+        #[derive(Deserialize, Serialize)]
+        struct SubmitDataBodyParams {
+            data: String,
+            data_type: String,
+        }
+
+        pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: Storer>(
             session_store: S,
             render_engine: R,
+            token_generator: T,
+            data_store: D,
         ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
             warp::any()
-                .and(warp::path!("data" / String).map(|path| SubmitDataPathParams { path }))
-                .and(warp::query::<SubmitDataQueryParams>())
+                .and(
+                    warp::path!("data" / String / String)
+                        .map(|path, token| SubmitDataPathParams { path, token }),
+                )
+                .and(warp::filters::body::form::<SubmitDataBodyParams>())
                 .and(warp_sessions::request::with_session(
                     session_store,
                     Some(CookieOptions {
-                        cookie_name: "sid".to_string(),
+                        cookie_name: "sid",
                         cookie_value: None,
                         max_age: Some(60),
                         domain: None,
@@ -39,21 +48,168 @@ pub mod data {
                         same_site: Some(SameSiteCookieOption::Strict),
                     }),
                 ))
+                .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
                 .and(warp::any().map(move || render_engine.clone()))
+                .and(warp::any().map(move || data_store.clone()))
                 .and_then(
                     move |path_params: SubmitDataPathParams,
-                          query_params: SubmitDataQueryParams,
+                          body_params: SubmitDataBodyParams,
                           session_with_store: SessionWithStore<S>,
-                          render_engine: R| async move {
-                        Ok::<_, Rejection>(Rendered::new(
-                            render_engine,
-                            RenderTemplate {
-                                name: "unsecure",
-                                value: HashMap::<String, String>::new(),
-                            },
-                        )?)
+                          token: String,
+                          render_engine: R,
+                          data_store: D| async move {
+                        let mut template_values = HashMap::new();
+                        template_values.insert("path".to_string(), path_params.path.clone());
+                        template_values.insert("data".to_string(), body_params.data.clone());
+                        template_values
+                            .insert("data_type".to_string(), body_params.data_type.clone());
+                        template_values.insert("edit".to_string(), "true".to_string());
+                        template_values.insert("token".to_string(), token.clone());
+                        match session_with_store.session.get("token") {
+                            Some::<String>(session_token) => {
+                                if session_token != path_params.token {
+                                    Ok::<_, Rejection>((
+                                        Rendered::new(
+                                            render_engine,
+                                            RenderTemplate {
+                                                name: "secure",
+                                                value: template_values,
+                                            },
+                                        )?,
+                                        path_params,
+                                        token,
+                                        session_with_store,
+                                    ))
+                                } else {
+                                    let val = match body_params.data_type.as_str() {
+                                        "string" => Ok(Value::from(body_params.data.clone())),
+                                        "boolean" => {
+                                            let data: bool = body_params
+                                                .data
+                                                .clone()
+                                                .parse()
+                                                .map_err(|_| warp::reject())?;
+                                            Ok(Value::from(data))
+                                        }
+                                        "f64" => {
+                                            let data: f64 = body_params
+                                                .data
+                                                .clone()
+                                                .parse()
+                                                .map_err(|_| warp::reject())?;
+                                            Ok(Value::from(data))
+                                        }
+                                        "i64" => {
+                                            let data: i64 = body_params
+                                                .data
+                                                .clone()
+                                                .parse()
+                                                .map_err(|_| warp::reject())?;
+                                            Ok(Value::from(data))
+                                        }
+                                        "u64" => {
+                                            let data: u64 = body_params
+                                                .data
+                                                .clone()
+                                                .parse()
+                                                .map_err(|_| warp::reject())?;
+                                            Ok(Value::from(data))
+                                        }
+                                        _ => Err(warp::reject()),
+                                    }?;
+                                    data_store
+                                        .create(
+                                            &path_params.path,
+                                            Data {
+                                                data_type: body_params.data_type.clone(),
+                                                path: path_params.path.clone(),
+                                                value: val,
+                                            },
+                                        )
+                                        .await
+                                        .map(|_| {
+                                            Ok::<_, Rejection>((
+                                                Rendered::new(
+                                                    render_engine,
+                                                    RenderTemplate {
+                                                        name: "secure",
+                                                        value: template_values,
+                                                    },
+                                                )?,
+                                                path_params,
+                                                token,
+                                                session_with_store,
+                                            ))
+                                        })?
+                                }
+                            }
+                            None => Ok::<_, Rejection>((
+                                Rendered::new(
+                                    render_engine,
+                                    RenderTemplate {
+                                        name: "secure",
+                                        value: template_values,
+                                    },
+                                )?,
+                                path_params,
+                                token,
+                                session_with_store,
+                            )),
+                        }
+
+                        // Ok::<_, Rejection>(Rendered::new(
+                        //     render_engine,
+                        //     RenderTemplate {
+                        //         name: "unsecure",
+                        //         value: HashMap::<String, String>::new(),
+                        //     },
+                        // )?)
                     },
                 )
+                .untuple_one()
+                .and_then(
+                    move |reply: Rendered,
+                          path_params: SubmitDataPathParams,
+                          token: String,
+                          mut session_with_store: SessionWithStore<S>| async move {
+                        session_with_store.cookie_options.path = Some(format!(
+                            "/data/{}/{}",
+                            path_params.path.clone(),
+                            path_params.token.clone()
+                        ));
+                        session_with_store.session.destroy();
+
+                        let mut new_session = SessionWithStore::<S> {
+                            session: Session::new(),
+                            session_store: session_with_store.session_store.clone(),
+                            cookie_options: CookieOptions {
+                                cookie_name: "sid",
+                                cookie_value: None,
+                                max_age: Some(60),
+                                domain: None,
+                                path: Some(format!(
+                                    "/data/{}/{}",
+                                    path_params.path.clone(),
+                                    token.clone()
+                                )),
+                                secure: false,
+                                http_only: true,
+                                same_site: Some(SameSiteCookieOption::Strict),
+                            },
+                        };
+
+                        new_session
+                            .session
+                            .insert("token", token)
+                            .map_err(|_| warp::reject())?;
+                        Ok::<_, Rejection>((
+                            warp_sessions::reply::with_session(reply, session_with_store).await?,
+                            new_session,
+                        ))
+                    },
+                )
+                .untuple_one()
+                .and_then(warp_sessions::reply::with_session)
         }
     }
     pub mod get {
@@ -65,9 +221,7 @@ pub mod data {
         use std::collections::HashMap;
         use warp::{Filter, Rejection, Reply};
         use warp_sessions::{
-            self,
-            cookie::{CookieOptions, SameSiteCookieOption},
-            SessionStore, SessionWithStore,
+            self, CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
         };
 
         #[derive(Deserialize, Serialize)]
@@ -104,7 +258,7 @@ pub mod data {
                 .and(warp_sessions::request::with_session(
                     session_store,
                     Some(CookieOptions {
-                        cookie_name: "sid".to_string(),
+                        cookie_name: "sid",
                         cookie_value: None,
                         max_age: Some(60),
                         domain: None,
@@ -174,10 +328,11 @@ pub mod data {
                 .and_then(warp_sessions::reply::with_session)
         }
 
-        pub fn with_token<S: SessionStore, R: Renderer, T: Storer>(
+        pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: Storer>(
             session_store: S,
             render_engine: R,
-            data_store: T,
+            token_generator: T,
+            data_store: D,
         ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
             warp::any()
                 .and(
@@ -188,7 +343,7 @@ pub mod data {
                 .and(warp_sessions::request::with_session(
                     session_store,
                     Some(CookieOptions {
-                        cookie_name: "sid".to_string(),
+                        cookie_name: "sid",
                         cookie_value: None,
                         max_age: Some(60),
                         domain: None,
@@ -198,23 +353,26 @@ pub mod data {
                         same_site: Some(SameSiteCookieOption::Strict),
                     }),
                 ))
+                .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
                 .and(warp::any().map(move || render_engine.clone()))
                 .and(warp::any().map(move || data_store.clone()))
                 .and_then(
                     move |path_params: WithTokenPathParams,
                           query_params: WithTokenQueryParams,
                           session_with_store: SessionWithStore<S>,
+                          token: String,
                           render_engine: R,
-                          data_store: T| async move {
+                          data_store: D| async move {
                         let mut template_values = HashMap::new();
-                        match query_params.css {
-                            Some(css) => template_values.insert("css".to_string(), css),
+                        match &query_params.css {
+                            Some(css) => template_values.insert("css".to_string(), css.to_owned()),
                             _ => None,
                         };
-                        match query_params.edit {
+                        match &query_params.edit {
                             Some(edit) => {
-                                if edit {
+                                if *edit {
                                     template_values.insert("edit".to_string(), "true".to_string());
+                                    template_values.insert("token".to_string(), token.clone());
                                 }
                             }
                             _ => (),
@@ -234,6 +392,8 @@ pub mod data {
                                             },
                                         )?,
                                         path_params,
+                                        query_params,
+                                        token,
                                         session_with_store,
                                     ))
                                 } else {
@@ -246,6 +406,8 @@ pub mod data {
                                             _ => "".to_string(),
                                         };
                                         template_values.insert("data".to_string(), val);
+                                        template_values
+                                            .insert("data_type".to_string(), data.data_type);
                                         Ok::<_, Rejection>((
                                             Rendered::new(
                                                 render_engine,
@@ -255,6 +417,8 @@ pub mod data {
                                                 },
                                             )?,
                                             path_params,
+                                            query_params,
+                                            token,
                                             session_with_store,
                                         ))
                                     })?
@@ -271,6 +435,8 @@ pub mod data {
                                         },
                                     )?,
                                     path_params,
+                                    query_params,
+                                    token,
                                     session_with_store,
                                 ))
                             }
@@ -281,6 +447,8 @@ pub mod data {
                 .and_then(
                     move |reply: Rendered,
                           path_params: WithTokenPathParams,
+                          query_params: WithTokenQueryParams,
+                          token: String,
                           mut session_with_store: SessionWithStore<S>| async move {
                         session_with_store.cookie_options.path = Some(format!(
                             "/data/{}/{}",
@@ -288,7 +456,41 @@ pub mod data {
                             path_params.token.clone()
                         ));
                         session_with_store.session.destroy();
-                        Ok::<_, Rejection>((reply, session_with_store))
+
+                        let mut new_session = SessionWithStore::<S> {
+                            session: Session::new(),
+                            session_store: session_with_store.session_store.clone(),
+                            cookie_options: CookieOptions {
+                                cookie_name: "sid",
+                                cookie_value: None,
+                                max_age: Some(60),
+                                domain: None,
+                                path: Some(format!(
+                                    "/data/{}/{}",
+                                    path_params.path.clone(),
+                                    token.clone()
+                                )),
+                                secure: false,
+                                http_only: true,
+                                same_site: Some(SameSiteCookieOption::Strict),
+                            },
+                        };
+
+                        // Only add a new session cookie if editing
+                        let edit = match query_params.edit {
+                            Some(e) => e,
+                            None => false,
+                        };
+                        if edit {
+                            new_session
+                                .session
+                                .insert("token", token)
+                                .map_err(|_| warp::reject())?;
+                        }
+                        Ok::<_, Rejection>((
+                            warp_sessions::reply::with_session(reply, session_with_store).await?,
+                            new_session,
+                        ))
                     },
                 )
                 .untuple_one()

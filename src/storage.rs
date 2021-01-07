@@ -66,7 +66,7 @@ impl Storer for RedactStorer {
             .send()
             .await
         {
-            Ok(r) => Ok(true),
+            Ok(_) => Ok(true),
             Err(source) => Err(reject::custom(StorageError::CreateError { source })),
         }
     }

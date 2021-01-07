@@ -6,7 +6,8 @@
   </head>
   <body>
     {{ #if edit }}
-    <form action="/data/{{ path }}" method="POST">
+    <form action="/data/{{ path }}/{{ token }}" method="POST">
+      <input type="hidden" value="{{ data_type }}" id="data_type" name="data_type">
       <input type="text" value="{{ data }}" id="data" name="data">
       <input type="submit" value="Submit" name="submit" id="submit">
     </form>

@@ -804,9 +804,9 @@ dependencies = [
 
 [[package]]
 name = "http"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28d569972648b2c512421b5f2a405ad6ac9666547189d0c5477a3f200f3e02f9"
+checksum = "84129d298a6d57d246960ff8eb831ca4af3f96d29e2e28848dae275408658e26"
 dependencies = [
  "bytes",
  "fnv",
@@ -2345,10 +2345,11 @@ dependencies = [
 
 [[package]]
 name = "warp-sessions"
-version = "0.1.0"
-source = "git+https://github.com/ajpauwels/warp-sessions.git?branch=main#f72323d458fe78dbd0dd7ffea20dac441da20ea8"
+version = "1.0.6"
+source = "git+https://github.com/ajpauwels/warp-sessions.git?branch=append-headers#e75f868ad1ec04f241971a6fef6b97807ebff164"
 dependencies = [
  "async-session",
+ "http",
  "serde 1.0.117",
  "thiserror",
  "tokio",

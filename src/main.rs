@@ -51,6 +51,8 @@ async fn main() {
     let mut template_mapping = HashMap::new();
     template_mapping.insert("unsecure", "./static/unsecure.handlebars");
     template_mapping.insert("secure", "./static/secure.handlebars");
+    template_mapping.insert("unsecure-collection", "./static/unsecure-collection.handlebars");
+    template_mapping.insert("secure-collection", "./static/secure-collection.handlebars");
     let render_engine = HandlebarsRenderer::new(template_mapping).unwrap();
 
     // Get storage handle
@@ -82,7 +84,17 @@ async fn main() {
             render_engine.clone(),
             token_generator.clone(),
             data_store.clone(),
-        )),
+        )
+        .or(routes::data::get::collection_with_token(
+            session_store.clone(),
+            render_engine.clone(),
+            token_generator.clone(),
+            data_store.clone(),
+        ).or(routes::data::get::collection_without_token(
+            session_store.clone(),
+            render_engine.clone(),
+            token_generator.clone(),
+        )))),
     );
 
     // Start the server

@@ -2345,8 +2345,9 @@ dependencies = [
 
 [[package]]
 name = "warp-sessions"
-version = "1.0.6"
-source = "git+https://github.com/ajpauwels/warp-sessions.git?branch=append-headers#e75f868ad1ec04f241971a6fef6b97807ebff164"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f2b5bfc31469bb5467155ad9fcac6a438e47d06ffbf0d19a9dd6c67848e962e"
 dependencies = [
  "async-session",
  "http",

@@ -1,5 +1,6 @@
 use rand::{thread_rng, Rng};
 use sha2::{Digest, Sha256};
+use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
 use warp::{
@@ -25,7 +26,16 @@ impl std::convert::From<TokenGenerationError> for Rejection {
 }
 
 pub trait TokenGenerator: Clone + Send + Sync {
-    fn generate_token(&mut self) -> Result<String, TokenGenerationError>;
+    fn generate_token(&self) -> Result<String, TokenGenerationError>;
+}
+
+impl<T> TokenGenerator for Arc<T>
+where
+    T: TokenGenerator,
+{
+    fn generate_token(&self) -> Result<String, TokenGenerationError> {
+        self.deref().generate_token()
+    }
 }
 
 pub struct FromCustomRng<T: Rng + Send + Sync> {
@@ -44,7 +54,7 @@ impl<T: Rng + Send + Sync> Clone for FromCustomRng<T> {
 }
 
 impl<T: Rng + Send + Sync> TokenGenerator for FromCustomRng<T> {
-    fn generate_token(&mut self) -> Result<String, TokenGenerationError> {
+    fn generate_token(&self) -> Result<String, TokenGenerationError> {
         // Generate 32 cryptographically secure random bytes
         let mut random_bytes: [u8; 32] = [0; 32];
         self.rand_source
@@ -64,7 +74,7 @@ impl<T: Rng + Send + Sync> TokenGenerator for FromCustomRng<T> {
 }
 
 impl TokenGenerator for FromThreadRng {
-    fn generate_token(&mut self) -> Result<String, TokenGenerationError> {
+    fn generate_token(&self) -> Result<String, TokenGenerationError> {
         // Generate 32 cryptographically secure random bytes
         let mut random_bytes: [u8; 32] = [0; 32];
         thread_rng()
@@ -115,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_token_generation_with_deterministic_rng() {
-        let mut token_generator = FromCustomRng::new(Pcg64::seed_from_u64(1));
+        let token_generator = FromCustomRng::new(Pcg64::seed_from_u64(1));
         let token = token_generator.generate_token().unwrap();
         assert_eq!(
             token,
@@ -125,7 +135,7 @@ mod tests {
 
     #[test]
     fn test_token_generation_with_thread_local_rng() {
-        let mut token_generator = FromThreadRng::new();
+        let token_generator = FromThreadRng::new();
         let token = token_generator.generate_token().unwrap();
         assert_eq!(token.chars().count(), 64);
     }
@@ -138,7 +148,7 @@ mod tests {
         failing_rng
             .expect_try_fill_bytes()
             .return_once(move |_| Err(err));
-        let mut token_generator = FromCustomRng::new(failing_rng);
+        let token_generator = FromCustomRng::new(failing_rng);
         let _ = token_generator.generate_token().unwrap();
     }
 
@@ -153,5 +163,22 @@ mod tests {
     fn test_clone_fromcustomrng() {
         let rng = FromCustomRng::new(Pcg64::seed_from_u64(1));
         let _ = rng.clone();
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::{TokenGenerationError, TokenGenerator};
+    use mockall::predicate::*;
+    use mockall::*;
+
+    mock! {
+    pub TokenGenerator {}
+    impl TokenGenerator for TokenGenerator {
+        fn generate_token(&self) -> Result<String, TokenGenerationError>;
+    }
+    impl Clone for TokenGenerator {
+        fn clone(&self) -> Self;
+    }
     }
 }

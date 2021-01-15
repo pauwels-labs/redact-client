@@ -464,73 +464,43 @@ pub mod data {
 #[cfg(test)]
 mod test {
     use super::data::get::without_token;
-    use crate::render::{RenderError, RenderTemplate, Renderer};
-    use crate::token::FromCustomRng;
-    use mockall::predicate::*;
-    use mockall::*;
-    use rand::prelude::*;
-    use rand_pcg::Pcg64;
-    use serde::Serialize;
-    use std::boxed::Box;
+    use crate::render::{test::MockRenderer, RenderTemplate};
+    use crate::token::test::MockTokenGenerator;
     use std::collections::HashMap;
+    use std::sync::Arc;
     use warp_sessions::MemoryStore;
-
-    mock! {
-        pub Renderer {
-            pub fn render(&self, template: RenderTemplate<HashMap<String, String>>) -> Result<String, RenderError>;
-    }
-    impl Clone for Renderer {
-        fn clone(&self) -> Self;
-    }
-    }
-
-    impl Renderer for MockRenderer {
-        fn render<T: Serialize + Send>(
-            &self,
-            template: RenderTemplate<T>,
-        ) -> Result<String, RenderError> {
-            let value_str = serde_json::to_string(&template.value).unwrap();
-            let value_hm: HashMap<String, String> = serde_json::from_str(&value_str).unwrap();
-
-            let typed_template = RenderTemplate {
-                name: template.name,
-                value: value_hm,
-            };
-            self.render(typed_template)
-        }
-    }
-
-    fn new_mock_renderer(expected_value: HashMap<String, String>) -> MockRenderer {
-        let mut render_engine = MockRenderer::new();
-        {
-            let expected_value = expected_value.clone();
-            render_engine
-                .expect_render()
-                .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
-                    template.value == expected_value
-                })
-                .return_once(move |_| Ok("".to_string()));
-        }
-        render_engine
-            .expect_clone()
-            .returning(move || new_mock_renderer(expected_value.clone()));
-
-        render_engine
-    }
 
     #[tokio::test]
     async fn test_without_token_returns_correct_html() {
         let session_store = MemoryStore::new();
-        let mut template_values = HashMap::new();
-        template_values.insert("path".to_string(), ".testKey.".to_string());
-        template_values.insert(
-            "token".to_string(),
-            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_string(),
-        );
-        let render_engine = new_mock_renderer(template_values);
+        let mut render_engine = MockRenderer::new();
+        render_engine
+            .expect_render()
+            .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
+                let mut expected_value = HashMap::new();
+                expected_value.insert("path".to_string(), ".testKey.".to_string());
+                expected_value.insert(
+                    "token".to_string(),
+                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_string(),
+                );
+                template.value == expected_value
+            })
+            .times(1)
+            .return_once(move |_| Ok("".to_string()));
 
-        let token_generator = FromCustomRng::new(Pcg64::seed_from_u64(1));
-        let without_token_filter = without_token(session_store, render_engine, token_generator);
+        let mut token_generator = MockTokenGenerator::new();
+        token_generator
+            .expect_generate_token()
+            .times(1)
+            .returning(|| {
+                Ok("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned())
+            });
+
+        let without_token_filter = without_token(
+            session_store,
+            Arc::new(render_engine),
+            Arc::new(token_generator),
+        );
 
         let res = warp::test::request()
             .path("/data/.testKey.")
@@ -542,16 +512,35 @@ mod test {
     #[tokio::test]
     async fn test_without_token_returns_correct_html_with_css() {
         let session_store = MemoryStore::new();
-        let mut template_values = HashMap::new();
-        template_values.insert("path".to_owned(), ".testKey.".to_owned());
-        template_values.insert(
-            "token".to_owned(),
-            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned(),
+        let mut render_engine = MockRenderer::new();
+        render_engine
+            .expect_render()
+            .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
+                let mut expected_value = HashMap::new();
+                expected_value.insert("path".to_owned(), ".testKey.".to_owned());
+                expected_value.insert(
+                    "token".to_owned(),
+                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned(),
+                );
+                expected_value.insert("css".to_owned(), "p { color: red; }".to_owned());
+                template.value == expected_value
+            })
+            .times(1)
+            .return_once(move |_| Ok("".to_string()));
+
+        let mut token_generator = MockTokenGenerator::new();
+        token_generator
+            .expect_generate_token()
+            .times(1)
+            .returning(|| {
+                Ok("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned())
+            });
+
+        let without_token_filter = without_token(
+            session_store,
+            Arc::new(render_engine),
+            Arc::new(token_generator),
         );
-        template_values.insert("css".to_owned(), "p { color: red; }".to_owned());
-        let render_engine = new_mock_renderer(template_values);
-        let token_generator = FromCustomRng::new(Pcg64::seed_from_u64(1));
-        let without_token_filter = without_token(session_store, render_engine, token_generator);
 
         let res = warp::test::request()
             .path("/data/.testKey.?css=p%20%7B%20color%3A%20red%3B%20%7D")
@@ -563,17 +552,35 @@ mod test {
     #[tokio::test]
     async fn test_without_token_returns_correct_html_with_edit_true() {
         let session_store = MemoryStore::new();
-        let mut template_values = HashMap::new();
-        template_values.insert("path".to_owned(), ".testKey.".to_owned());
-        template_values.insert(
-            "token".to_owned(),
-            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned(),
+        let mut render_engine = MockRenderer::new();
+        render_engine
+            .expect_render()
+            .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
+                let mut expected_value = HashMap::new();
+                expected_value.insert("path".to_owned(), ".testKey.".to_owned());
+                expected_value.insert(
+                    "token".to_owned(),
+                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned(),
+                );
+                expected_value.insert("edit".to_owned(), "true".to_owned());
+                template.value == expected_value
+            })
+            .times(1)
+            .return_once(move |_| Ok("".to_string()));
+
+        let mut token_generator = MockTokenGenerator::new();
+        token_generator
+            .expect_generate_token()
+            .times(1)
+            .returning(|| {
+                Ok("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned())
+            });
+
+        let without_token_filter = without_token(
+            session_store,
+            Arc::new(render_engine),
+            Arc::new(token_generator),
         );
-        template_values.insert("edit".to_owned(), "true".to_owned());
-        let render_engine = new_mock_renderer(template_values);
-        let token_generator = FromCustomRng::new(Pcg64::seed_from_u64(1));
-        let without_token_filter =
-            without_token(session_store, render_engine.clone(), token_generator);
 
         let res = warp::test::request()
             .path("/data/.testKey.?edit=true")
@@ -585,17 +592,35 @@ mod test {
     #[tokio::test]
     async fn test_without_token_returns_correct_html_with_edit_false() {
         let session_store = MemoryStore::new();
-        let mut template_values = HashMap::new();
-        template_values.insert("path".to_owned(), ".testKey.".to_owned());
-        template_values.insert(
-            "token".to_owned(),
-            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned(),
+        let mut render_engine = MockRenderer::new();
+        render_engine
+            .expect_render()
+            .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
+                let mut expected_value = HashMap::new();
+                expected_value.insert("path".to_owned(), ".testKey.".to_owned());
+                expected_value.insert(
+                    "token".to_owned(),
+                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned(),
+                );
+                expected_value.insert("edit".to_owned(), "false".to_owned());
+                template.value == expected_value
+            })
+            .times(1)
+            .return_once(move |_| Ok("".to_string()));
+
+        let mut token_generator = MockTokenGenerator::new();
+        token_generator
+            .expect_generate_token()
+            .times(1)
+            .returning(|| {
+                Ok("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned())
+            });
+
+        let without_token_filter = without_token(
+            session_store,
+            Arc::new(render_engine),
+            Arc::new(token_generator),
         );
-        template_values.insert("edit".to_owned(), "false".to_owned());
-        let render_engine = new_mock_renderer(template_values);
-        let token_generator = FromCustomRng::new(Pcg64::seed_from_u64(1));
-        let without_token_filter =
-            without_token(session_store, render_engine.clone(), token_generator);
 
         let res = warp::test::request()
             .path("/data/.testKey.?edit=false")

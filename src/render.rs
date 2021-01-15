@@ -104,7 +104,7 @@ impl<'reg> Renderer for HandlebarsRenderer<'reg> {
 }
 
 #[cfg(test)]
-pub mod test {
+pub mod tests {
     use super::{RenderError, RenderTemplate, Renderer};
     use mockall::predicate::*;
     use mockall::*;

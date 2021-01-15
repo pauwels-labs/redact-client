@@ -464,8 +464,8 @@ pub mod data {
 #[cfg(test)]
 mod test {
     use super::data::get::without_token;
-    use crate::render::{test::MockRenderer, RenderTemplate};
-    use crate::token::test::MockTokenGenerator;
+    use crate::render::{tests::MockRenderer, RenderTemplate};
+    use crate::token::tests::MockTokenGenerator;
     use std::collections::HashMap;
     use std::sync::Arc;
     use warp_sessions::MemoryStore;

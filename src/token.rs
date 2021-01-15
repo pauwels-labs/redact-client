@@ -106,7 +106,7 @@ impl FromThreadRng {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use crate::token::{FromCustomRng, FromThreadRng, TokenGenerationError, TokenGenerator};
     use mockall::predicate::*;
     use mockall::*;
@@ -114,12 +114,22 @@ mod tests {
     use rand_pcg::Pcg64;
 
     mock! {
+    pub TokenGenerator {}
+    impl TokenGenerator for TokenGenerator {
+            fn generate_token(&self) -> Result<String, TokenGenerationError>;
+    }
+    impl Clone for TokenGenerator {
+            fn clone(&self) -> Self;
+    }
+    }
+
+    mock! {
     FailingRng {}
     impl RngCore for FailingRng {
-        fn fill_bytes(&mut self, dest: &mut [u8]);
-        fn next_u32(&mut self) -> u32;
-        fn next_u64(&mut self) -> u64;
-        fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error>;
+            fn fill_bytes(&mut self, dest: &mut [u8]);
+            fn next_u32(&mut self) -> u32;
+            fn next_u64(&mut self) -> u64;
+            fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error>;
     }
     }
 
@@ -163,22 +173,5 @@ mod tests {
     fn test_clone_fromcustomrng() {
         let rng = FromCustomRng::new(Pcg64::seed_from_u64(1));
         let _ = rng.clone();
-    }
-}
-
-#[cfg(test)]
-pub mod test {
-    use super::{TokenGenerationError, TokenGenerator};
-    use mockall::predicate::*;
-    use mockall::*;
-
-    mock! {
-    pub TokenGenerator {}
-    impl TokenGenerator for TokenGenerator {
-        fn generate_token(&self) -> Result<String, TokenGenerationError>;
-    }
-    impl Clone for TokenGenerator {
-        fn clone(&self) -> Self;
-    }
     }
 }

@@ -1,3 +1,6 @@
 /target
 key
 *.env
+
+# don't include the cov report
+tarpaulin-report.html

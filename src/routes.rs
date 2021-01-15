@@ -359,7 +359,7 @@ pub mod data {
                                 } else {
                                     let (value, data_type): (String, String) =
                                         data_store.get(&path_params.path).await.map_or_else(
-                                            |e| ("".to_string(), "string".to_string()),
+                                            |_| ("".to_string(), "string".to_string()),
                                             |data| {
                                                 let val_str = match data.value.as_str() {
                                                     Some(s) => s.to_owned(),
@@ -458,5 +458,149 @@ pub mod data {
                 .untuple_one()
                 .and_then(warp_sessions::reply::with_session)
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::data::get::without_token;
+    use crate::render::{RenderError, RenderTemplate, Renderer};
+    use crate::token::FromCustomRng;
+    use mockall::predicate::*;
+    use mockall::*;
+    use rand::prelude::*;
+    use rand_pcg::Pcg64;
+    use serde::Serialize;
+    use std::boxed::Box;
+    use std::collections::HashMap;
+    use warp_sessions::MemoryStore;
+
+    mock! {
+        pub Renderer {
+            pub fn render(&self, template: RenderTemplate<HashMap<String, String>>) -> Result<String, RenderError>;
+    }
+    impl Clone for Renderer {
+        fn clone(&self) -> Self;
+    }
+    }
+
+    impl Renderer for MockRenderer {
+        fn render<T: Serialize + Send>(
+            &self,
+            template: RenderTemplate<T>,
+        ) -> Result<String, RenderError> {
+            let value_str = serde_json::to_string(&template.value).unwrap();
+            let value_hm: HashMap<String, String> = serde_json::from_str(&value_str).unwrap();
+
+            let typed_template = RenderTemplate {
+                name: template.name,
+                value: value_hm,
+            };
+            self.render(typed_template)
+        }
+    }
+
+    fn new_mock_renderer(expected_value: HashMap<String, String>) -> MockRenderer {
+        let mut render_engine = MockRenderer::new();
+        {
+            let expected_value = expected_value.clone();
+            render_engine
+                .expect_render()
+                .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
+                    template.value == expected_value
+                })
+                .return_once(move |_| Ok("".to_string()));
+        }
+        render_engine
+            .expect_clone()
+            .returning(move || new_mock_renderer(expected_value.clone()));
+
+        render_engine
+    }
+
+    #[tokio::test]
+    async fn test_without_token_returns_correct_html() {
+        let session_store = MemoryStore::new();
+        let mut template_values = HashMap::new();
+        template_values.insert("path".to_string(), ".testKey.".to_string());
+        template_values.insert(
+            "token".to_string(),
+            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_string(),
+        );
+        let render_engine = new_mock_renderer(template_values);
+
+        let token_generator = FromCustomRng::new(Pcg64::seed_from_u64(1));
+        let without_token_filter = without_token(session_store, render_engine, token_generator);
+
+        let res = warp::test::request()
+            .path("/data/.testKey.")
+            .reply(&without_token_filter)
+            .await;
+        assert_eq!(res.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn test_without_token_returns_correct_html_with_css() {
+        let session_store = MemoryStore::new();
+        let mut template_values = HashMap::new();
+        template_values.insert("path".to_owned(), ".testKey.".to_owned());
+        template_values.insert(
+            "token".to_owned(),
+            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned(),
+        );
+        template_values.insert("css".to_owned(), "p { color: red; }".to_owned());
+        let render_engine = new_mock_renderer(template_values);
+        let token_generator = FromCustomRng::new(Pcg64::seed_from_u64(1));
+        let without_token_filter = without_token(session_store, render_engine, token_generator);
+
+        let res = warp::test::request()
+            .path("/data/.testKey.?css=p%20%7B%20color%3A%20red%3B%20%7D")
+            .reply(&without_token_filter)
+            .await;
+        assert_eq!(res.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn test_without_token_returns_correct_html_with_edit_true() {
+        let session_store = MemoryStore::new();
+        let mut template_values = HashMap::new();
+        template_values.insert("path".to_owned(), ".testKey.".to_owned());
+        template_values.insert(
+            "token".to_owned(),
+            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned(),
+        );
+        template_values.insert("edit".to_owned(), "true".to_owned());
+        let render_engine = new_mock_renderer(template_values);
+        let token_generator = FromCustomRng::new(Pcg64::seed_from_u64(1));
+        let without_token_filter =
+            without_token(session_store, render_engine.clone(), token_generator);
+
+        let res = warp::test::request()
+            .path("/data/.testKey.?edit=true")
+            .reply(&without_token_filter)
+            .await;
+        assert_eq!(res.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn test_without_token_returns_correct_html_with_edit_false() {
+        let session_store = MemoryStore::new();
+        let mut template_values = HashMap::new();
+        template_values.insert("path".to_owned(), ".testKey.".to_owned());
+        template_values.insert(
+            "token".to_owned(),
+            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned(),
+        );
+        template_values.insert("edit".to_owned(), "false".to_owned());
+        let render_engine = new_mock_renderer(template_values);
+        let token_generator = FromCustomRng::new(Pcg64::seed_from_u64(1));
+        let without_token_filter =
+            without_token(session_store, render_engine.clone(), token_generator);
+
+        let res = warp::test::request()
+            .path("/data/.testKey.?edit=false")
+            .reply(&without_token_filter)
+            .await;
+        assert_eq!(res.status(), 200);
     }
 }

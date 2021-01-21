@@ -3,10 +3,7 @@ use serde::Serialize;
 use std::ops::Deref;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
-use warp::{
-    reject::{self, Reject},
-    Rejection, Reply,
-};
+use warp::{reject::Reject, Reply};
 
 #[derive(Error, Debug)]
 pub enum RenderError {
@@ -17,12 +14,6 @@ pub enum RenderError {
 }
 
 impl Reject for RenderError {}
-
-impl std::convert::From<RenderError> for Rejection {
-    fn from(error: RenderError) -> Self {
-        reject::custom(error)
-    }
-}
 
 impl std::convert::From<TemplateFileError> for RenderError {
     fn from(source: TemplateFileError) -> Self {

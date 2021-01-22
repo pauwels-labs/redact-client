@@ -2,10 +2,7 @@ use rand::{thread_rng, Rng};
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
-use warp::{
-    reject::{self, Reject},
-    Rejection,
-};
+use warp::reject::Reject;
 
 #[derive(Error, Debug)]
 pub enum TokenGenerationError {
@@ -17,12 +14,6 @@ pub enum TokenGenerationError {
 }
 
 impl Reject for TokenGenerationError {}
-
-impl std::convert::From<TokenGenerationError> for Rejection {
-    fn from(error: TokenGenerationError) -> Self {
-        reject::custom(error)
-    }
-}
 
 pub trait TokenGenerator: Clone + Send + Sync {
     fn generate_token(&mut self) -> Result<String, TokenGenerationError>;

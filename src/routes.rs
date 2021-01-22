@@ -423,7 +423,7 @@ pub mod data {
                                             // Non-collection request
                                             let (value, data_type): (String, String) =
                                                 data_store.get(&path_params.path).await.map_or_else(
-                                                    |e| ("".to_string(), "string".to_string()),
+                                                    |_| ("".to_string(), "string".to_string()),
                                                     |data| {
                                                         let val_str = match data.value.as_str() {
                                                             Some(s) => s.to_owned(),

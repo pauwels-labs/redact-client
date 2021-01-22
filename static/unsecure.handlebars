@@ -4,7 +4,7 @@
   <body>
     <iframe id="data-iframe" src="" title="secure"></iframe>
     <script>
-      document.getElementById("data-iframe").contentWindow.location.href = "/data/{{ path }}/{{ token }}?{{ #if css }}css={{ css }}{{ /if }}{{ #if css and edit }}&{{ /if }}{{ #if edit }}edit={{ edit }}{{ /if }}";
+      document.getElementById("data-iframe").contentWindow.location.href = "/data/{{ path }}/{{ token }}?{{ #if css }}css={{ css }}{{ /if }}{{ #if css and edit }}&{{ /if }}{{ #if edit }}edit={{ edit }}{{ /if }}{{ #if css and index }}&{{ /if }}{{ #if index }}index={{ index }}{{ /if }}{{ #if fetch_id }}&fetch_id={{ fetch_id }}{{ /if }}";
     </script>
   </body>
 </html>

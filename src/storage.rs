@@ -56,7 +56,7 @@ impl RedactStorer {
 #[async_trait]
 impl Storer for RedactStorer {
     async fn get(&self, path: &str) -> Result<Data, Rejection> {
-        match reqwest::get(&format!("{}/data?path={}", self.url, path)).await {
+        match reqwest::get(&format!("{}/data/{}", self.url, path)).await {
             Ok(r) => Ok(r
                 .json::<Data>()
                 .await
@@ -66,7 +66,7 @@ impl Storer for RedactStorer {
     }
 
     async fn get_collection(&self, path: &str, skip: i64, page_size: i64) -> Result<DataCollection, Rejection> {
-        match reqwest::get(&format!("{}/data?path={}&skip={}&page_size={}", self.url, path, skip, page_size)).await {
+        match reqwest::get(&format!("{}/data/{}?skip={}&page_size={}", self.url, path, skip, page_size)).await {
             Ok(r) => {
                 Ok(r
                 .json::<DataCollection>()

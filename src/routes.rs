@@ -188,6 +188,8 @@ pub mod data {
         struct WithoutTokenQueryParams {
             css: Option<String>,
             edit: Option<bool>,
+            fetch_id: Option<String>,
+            index: Option<i64>,
         }
 
         #[derive(Deserialize, Serialize)]
@@ -196,29 +198,17 @@ pub mod data {
         }
 
         #[derive(Deserialize, Serialize)]
-        struct CollectionWithoutTokenPathParams {
-            path: String,
-            index: i64,
-            fetch_id: String,
-        }
-
-        #[derive(Deserialize, Serialize)]
         struct WithTokenQueryParams {
+            token: Option<String>,
             css: Option<String>,
             edit: Option<bool>,
+            index: Option<i64>,
+            fetch_id: Option<String>,
         }
 
         #[derive(Deserialize, Serialize)]
         struct WithTokenPathParams {
             path: String,
-            token: String,
-        }
-
-        #[derive(Deserialize, Serialize)]
-        struct CollectionWithTokenPathParams {
-            path: String,
-            index: i64,
-            fetch_id: String,
             token: String,
         }
 
@@ -260,9 +250,15 @@ pub mod data {
                             _ => None,
                         };
                         match query_params.edit {
-                            Some(edit) => {
-                                template_values.insert("edit".to_string(), edit.to_string())
-                            }
+                            Some(edit) => template_values.insert("edit".to_string(), edit.to_string()),
+                            _ => None,
+                        };
+                        match query_params.index {
+                            Some(index) => template_values.insert("index".to_string(), index.to_string()),
+                            _ => None,
+                        };
+                        match query_params.fetch_id {
+                            Some(fetch_id) => template_values.insert("fetch_id".to_string(), fetch_id.to_string()),
                             _ => None,
                         };
 
@@ -372,19 +368,75 @@ pub mod data {
                                         session_with_store,
                                     ))
                                 } else {
-                                    let (value, data_type): (String, String) =
-                                        data_store.get(&path_params.path).await.map_or_else(
-                                            |e| ("".to_string(), "string".to_string()),
-                                            |data| {
-                                                let val_str = match data.value.as_str() {
-                                                    Some(s) => s.to_owned(),
-                                                    None => "".to_string(),
-                                                };
-                                                (val_str, data.data_type)
-                                            },
-                                        );
-                                    template_values.insert("data".to_string(), value);
-                                    template_values.insert("data_type".to_string(), data_type);
+                                    // ----- start request query validation code -----
+                                    let mut is_valid_request = true;
+                                    match (&query_params.fetch_id, query_params.index) {
+                                        (Some(_fetch_id), None) => is_valid_request = false,
+                                        (None, Some(_index)) => is_valid_request = false,
+                                        _ => (),
+                                    }
+
+                                    if !is_valid_request {
+                                        return Ok::<_, Rejection>((
+                                            Rendered::new(
+                                                render_engine,
+                                                RenderTemplate {
+                                                    name: "secure",
+                                                    value: template_values,
+                                                },
+                                            )?,
+                                            path_params,
+                                            query_params,
+                                            token.clone(),
+                                            session_with_store,
+                                        ));
+                                    }
+                                    // ----- end request query validation code -----
+
+                                    // ----- start repository code -----
+                                    match (&query_params.fetch_id, query_params.index) {
+                                        // Collection request
+                                        (Some(_fetch_id), Some(index)) => {
+                                            let (value, data_type): (String, String) =
+                                                data_store.get_collection(&path_params.path, index, 1).await.map_or_else(
+                                                    |e| ("".to_string(), "string".to_string()),
+                                                    |mut data| {
+                                                        let (value, data_type) = match data.results.pop() {
+                                                            Some(s) => {
+                                                                let u: Data = serde_json::from_value(s).unwrap();
+                                                                let val_str = match u.value.as_str() {
+                                                                    Some(u) => u.to_owned(),
+                                                                    None => "".to_string(),
+                                                                };
+                                                                let data_type = u.data_type;
+                                                                (val_str, data_type)
+                                                            },
+                                                            None => ("".to_string(), "string".to_string()),
+                                                        };
+                                                        (value, data_type)
+                                                    },
+                                                );
+
+                                            template_values.insert("data".to_string(), value);
+                                            template_values.insert("data_type".to_string(), data_type);
+                                        },
+                                        _ => {
+                                            // Non-collection request
+                                            let (value, data_type): (String, String) =
+                                                data_store.get(&path_params.path).await.map_or_else(
+                                                    |e| ("".to_string(), "string".to_string()),
+                                                    |data| {
+                                                        let val_str = match data.value.as_str() {
+                                                            Some(s) => s.to_owned(),
+                                                            None => "".to_string(),
+                                                        };
+                                                        (val_str, data.data_type)
+                                                    },
+                                                );
+                                            template_values.insert("data".to_string(), value);
+                                            template_values.insert("data_type".to_string(), data_type);
+                                        },
+                                    }
 
                                     Ok::<_, Rejection>((
                                         Rendered::new(
@@ -399,6 +451,8 @@ pub mod data {
                                         token.clone(),
                                         session_with_store,
                                     ))
+
+                                    // ----- end repository code -----
                                 }
                             }
                             None => {
@@ -473,265 +527,5 @@ pub mod data {
                 .untuple_one()
                 .and_then(warp_sessions::reply::with_session)
         }
-
-
-        pub fn collection_with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: Storer>(
-            session_store: S,
-            render_engine: R,
-            token_generator: T,
-            data_store: D,
-        ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
-            warp::any()
-                .and(
-                    warp::path!("data" / String / i64 / "fetch_id" / String / String)
-                        .map(|path, index, fetch_id, token| CollectionWithTokenPathParams { path, index, fetch_id, token }),
-                )
-                .and(warp::query::<WithTokenQueryParams>())
-                .and(warp_sessions::request::with_session(
-                    session_store,
-                    Some(CookieOptions {
-                        cookie_name: "sid",
-                        cookie_value: None,
-                        max_age: Some(60),
-                        domain: None,
-                        path: None,
-                        secure: false,
-                        http_only: true,
-                        same_site: Some(SameSiteCookieOption::Strict),
-                    }),
-                ))
-                .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
-                .and(warp::any().map(move || render_engine.clone()))
-                .and(warp::any().map(move || data_store.clone()))
-                .and_then(
-                    move |path_params: CollectionWithTokenPathParams,
-                          query_params: WithTokenQueryParams,
-                          session_with_store: SessionWithStore<S>,
-                          token: String,
-                          render_engine: R,
-                          data_store: D| async move {
-                        let mut template_values = HashMap::new();
-                        match &query_params.css {
-                            Some(css) => template_values.insert("css".to_string(), css.to_owned()),
-                            _ => None,
-                        };
-
-                        match session_with_store.session.get("token") {
-                            Some::<String>(session_token) => {
-                                if session_token != path_params.token {
-                                    template_values.insert("data".to_string(), "".to_string());
-                                    Ok::<_, Rejection>((
-                                        Rendered::new(
-                                            render_engine,
-                                            RenderTemplate {
-                                                name: "secure",
-                                                value: template_values,
-                                            },
-                                        )?,
-                                        path_params,
-                                        query_params,
-                                        token,
-                                        session_with_store,
-                                    ))
-                                } else {
-                                    let (value, data_type): (String, String) =
-                                        data_store.get_collection(&path_params.path, path_params.index, 1).await.map_or_else(
-                                            |e| ("".to_string(), "string".to_string()),
-                                            |mut data| {
-                                                let (value, data_type) = match data.results.pop() {
-                                                    Some(s) => {
-                                                        let u: Data = serde_json::from_value(s).unwrap();
-                                                        let val_str = match u.value.as_str() {
-                                                            Some(u) => u.to_owned(),
-                                                            None => "".to_string(),
-                                                        }; 
-                                                        let data_type = u.data_type;
-                                                        (val_str, data_type)
-                                                    },
-                                                    None => ("".to_string(), "string".to_string()),
-                                                };
-                                                (value, data_type)
-                                            },
-                                        );
-                                    template_values.insert("data".to_string(), value);
-                                    template_values.insert("data_type".to_string(), data_type);
-
-                                    Ok::<_, Rejection>((
-                                        Rendered::new(
-                                            render_engine,
-                                            RenderTemplate {
-                                                name: "secure",
-                                                value: template_values,
-                                            },
-                                        )?,
-                                        path_params,
-                                        query_params,
-                                        token.clone(),
-                                        session_with_store,
-                                    ))
-                                }
-                            }
-                            None => {
-                                template_values.insert("data".to_string(), "".to_string());
-                                Ok::<_, Rejection>((
-                                    Rendered::new(
-                                        render_engine,
-                                        RenderTemplate {
-                                            name: "secure",
-                                            value: template_values,
-                                        },
-                                    )?,
-                                    path_params,
-                                    query_params,
-                                    token,
-                                    session_with_store,
-                                ))
-                            }
-                        }
-                    },
-                )
-                .untuple_one()
-                .and_then(
-                    move |reply: Rendered,
-                          path_params: CollectionWithTokenPathParams,
-                          query_params: WithTokenQueryParams,
-                          token: String,
-                          mut session_with_store: SessionWithStore<S>| async move {
-                        session_with_store.cookie_options.path = Some(format!(
-                            "/data/{}/{}/fetch_id/{}/{}",
-                            path_params.path.clone(),
-                            path_params.index.to_string(),
-                            path_params.fetch_id.clone(),
-                            path_params.token.clone()
-                        ));
-                        session_with_store.session.destroy();
-
-                        let mut new_session = SessionWithStore::<S> {
-                            session: Session::new(),
-                            session_store: session_with_store.session_store.clone(),
-                            cookie_options: CookieOptions {
-                                cookie_name: "sid",
-                                cookie_value: None,
-                                max_age: Some(60),
-                                domain: None,
-                                path: Some(format!(
-                                    "/data/{}/{}/fetch_id/{}/{}",
-                                    path_params.path.clone(),
-                                    path_params.index.to_string(),
-                                    path_params.fetch_id.clone(),
-                                    token.clone()
-                                )),
-                                secure: false,
-                                http_only: true,
-                                same_site: Some(SameSiteCookieOption::Strict),
-                            },
-                        };
-
-                        // Only add a new session cookie if editing
-                        let edit = match query_params.edit {
-                            Some(e) => e,
-                            None => false,
-                        };
-                        if edit {
-                            new_session
-                                .session
-                                .insert("token", token)
-                                .map_err(|_| warp::reject())?;
-                        }
-                        Ok::<_, Rejection>((
-                            warp_sessions::reply::with_session(reply, session_with_store).await?,
-                            new_session,
-                        ))
-                    },
-                )
-                .untuple_one()
-                .and_then(warp_sessions::reply::with_session)
-        }
-
-        pub fn collection_without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
-            session_store: S,
-            render_engine: R,
-            token_generator: T,
-        ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
-            warp::any()
-                .and(warp::path!("data" / String / i64 / "fetch_id" / String).map(|path, index, fetch_id| CollectionWithoutTokenPathParams { path, index, fetch_id }))
-                .and(warp::query::<WithoutTokenQueryParams>())
-                .and(warp_sessions::request::with_session(
-                    session_store,
-                    Some(CookieOptions {
-                        cookie_name: "sid",
-                        cookie_value: None,
-                        max_age: Some(60),
-                        domain: None,
-                        path: None,
-                        secure: false,
-                        http_only: true,
-                        same_site: Some(SameSiteCookieOption::Strict),
-                    }),
-                ))
-                .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
-                .and(warp::any().map(move || render_engine.clone()))
-                .and_then(
-                    move |path_params: CollectionWithoutTokenPathParams,
-                          query_params: WithoutTokenQueryParams,
-                          session_with_store: SessionWithStore<S>,
-                          token: String,
-                          render_engine: R| async move {
-                        let mut template_values = HashMap::new();
-                        template_values.insert("path".to_string(), path_params.path.clone());
-                        template_values.insert("fetch_id".to_string(), path_params.fetch_id.clone());
-                        template_values.insert("index".to_string(), path_params.index.to_string());
-                        template_values.insert("token".to_string(), token.clone());
-
-                        match query_params.css {
-                            Some(css) => template_values.insert("css".to_string(), css),
-                            _ => None,
-                        };
-                        match query_params.edit {
-                            Some(edit) => {
-                                template_values.insert("edit".to_string(), edit.to_string())
-                            }
-                            _ => None,
-                        };
-
-                        Ok::<_, Rejection>((
-                            Rendered::new(
-                                render_engine,
-                                RenderTemplate {
-                                    name: "unsecure-collection",
-                                    value: template_values,
-                                },
-                            )?,
-                            path_params,
-                            session_with_store,
-                            token,
-                        ))
-                    },
-                )
-                .untuple_one()
-                .and_then(
-                    move |reply: Rendered,
-                          path_params: CollectionWithoutTokenPathParams,
-                          mut session_with_store: SessionWithStore<S>,
-                          token: String| async move {
-                        session_with_store
-                            .session
-                            .insert("token", token.clone())
-                            .map_err(|_| warp::reject())?;
-                        session_with_store.cookie_options.path = Some(format!(
-                            "/data/{}/{}/fetch_id/{}/{}",
-                            path_params.path.clone(),
-                            path_params.index.to_string(),
-                            path_params.fetch_id.clone(),
-                            token.clone()
-                        ));
-
-                        Ok::<_, Rejection>((reply, session_with_store))
-                    },
-                )
-                .untuple_one()
-                .and_then(warp_sessions::reply::with_session)
-        }
-
     }
 }

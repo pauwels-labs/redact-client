@@ -199,7 +199,6 @@ pub mod data {
 
         #[derive(Deserialize, Serialize)]
         struct WithTokenQueryParams {
-            token: Option<String>,
             css: Option<String>,
             edit: Option<bool>,
             index: Option<i64>,

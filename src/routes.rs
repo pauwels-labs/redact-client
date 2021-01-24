@@ -402,12 +402,11 @@ pub mod data {
                                                     |mut data| {
                                                         let (value, data_type) = match data.results.pop() {
                                                             Some(s) => {
-                                                                let u: Data = serde_json::from_value(s).unwrap();
-                                                                let val_str = match u.value.as_str() {
-                                                                    Some(u) => u.to_owned(),
+                                                                let val_str = match s.value.as_str() {
+                                                                    Some(s) => s.to_owned(),
                                                                     None => "".to_string(),
                                                                 };
-                                                                let data_type = u.data_type;
+                                                                let data_type = s.data_type;
                                                                 (val_str, data_type)
                                                             },
                                                             None => ("".to_string(), "string".to_string()),

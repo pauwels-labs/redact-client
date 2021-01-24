@@ -30,7 +30,7 @@ pub struct Data {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DataCollection {
-    pub results: Vec<Value>
+    pub results: Vec<Data>
 }
 
 #[async_trait]

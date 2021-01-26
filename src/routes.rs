@@ -175,14 +175,16 @@ pub mod data {
     }
     pub mod get {
         use crate::render::{RenderTemplate, Rendered, Renderer};
-        use crate::storage::{Data, Storer};
+        use crate::storage::Storer;
         use crate::token::TokenGenerator;
+        use crate::RedisClient;
         use serde::{Deserialize, Serialize};
         use std::collections::HashMap;
         use warp::{Filter, Rejection, Reply};
         use warp_sessions::{
             self, CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
         };
+        use crate::redis_client::RedisClientTrait;
 
         #[derive(Deserialize, Serialize)]
         struct WithoutTokenQueryParams {
@@ -298,11 +300,12 @@ pub mod data {
                 .and_then(warp_sessions::reply::with_session)
         }
 
-        pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: Storer>(
+        pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: Storer, P: RedisClientTrait>(
             session_store: S,
             render_engine: R,
             token_generator: T,
             data_store: D,
+            redis_client: P,
         ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
             warp::any()
                 .and(
@@ -326,13 +329,15 @@ pub mod data {
                 .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
                 .and(warp::any().map(move || render_engine.clone()))
                 .and(warp::any().map(move || data_store.clone()))
+                .and(warp::any().map(move || redis_client.clone()))
                 .and_then(
                     move |path_params: WithTokenPathParams,
                           query_params: WithTokenQueryParams,
                           session_with_store: SessionWithStore<S>,
                           token: String,
                           render_engine: R,
-                          data_store: D| async move {
+                          data_store: D,
+                          redis_client: P | async move {
                         let mut template_values = HashMap::new();
                         match &query_params.css {
                             Some(css) => template_values.insert("css".to_string(), css.to_owned()),
@@ -396,6 +401,8 @@ pub mod data {
                                     match (&query_params.fetch_id, query_params.index) {
                                         // Collection request
                                         (Some(_fetch_id), Some(index)) => {
+                                            let res = redis_client.set_str("abckey", "asd", 100).await;
+
                                             let (value, data_type): (String, String) =
                                                 data_store.get_collection(&path_params.path, index, 1).await.map_or_else(
                                                     |e| ("".to_string(), "string".to_string()),

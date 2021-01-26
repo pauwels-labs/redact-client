@@ -2,6 +2,7 @@ mod render;
 mod routes;
 mod storage;
 pub mod token;
+mod redis_client;
 
 use render::HandlebarsRenderer;
 use rust_config::Configurator;
@@ -11,6 +12,7 @@ use storage::RedactStorer;
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
+use redis_client::RedisClient;
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -60,6 +62,10 @@ async fn main() {
     // Create an in-memory session store
     let session_store = MemoryStore::new();
 
+    // Connect to redis pool
+    let redis_connection_string = config.get_str("redis.conn").unwrap();
+    let redis_connection = RedisClient::new(&redis_connection_string);
+
     // Create a token generator
     let token_generator = FromThreadRng::new();
 
@@ -77,6 +83,7 @@ async fn main() {
             render_engine.clone(),
             token_generator.clone(),
             data_store.clone(),
+            redis_connection.clone(),
         )
         .or(routes::data::get::without_token(
             session_store.clone(),

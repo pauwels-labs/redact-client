@@ -72,17 +72,18 @@ async fn main() {
         data_store.clone(),
     ));
     let get_routes = warp::get().and(
-        routes::data::get::without_token(
-            session_store.clone(),
-            render_engine.clone(),
-            token_generator.clone(),
-        )
-        .or(routes::data::get::with_token(
+        routes::data::get::with_token(
             session_store.clone(),
             render_engine.clone(),
             token_generator.clone(),
             data_store.clone(),
-        )),
+        )
+        .or(routes::data::get::without_token(
+            session_store.clone(),
+            render_engine.clone(),
+            token_generator.clone(),
+        )
+        ),
     );
 
     // Start the server

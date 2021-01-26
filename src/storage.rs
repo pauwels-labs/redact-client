@@ -28,9 +28,15 @@ pub struct Data {
     pub value: Value,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DataCollection {
+    pub results: Vec<Data>
+}
+
 #[async_trait]
 pub trait Storer: Clone + Send + Sync {
     async fn get(&self, path: &str) -> Result<Data, Rejection>;
+    async fn get_collection(&self, path: &str, skip: i64, page_size: i64) -> Result<DataCollection, Rejection>;
     async fn create(&self, path: &str, value: Data) -> Result<bool, Rejection>;
 }
 
@@ -50,12 +56,26 @@ impl RedactStorer {
 #[async_trait]
 impl Storer for RedactStorer {
     async fn get(&self, path: &str) -> Result<Data, Rejection> {
-        match reqwest::get(&format!("{}/data?path={}", self.url, path)).await {
+        match reqwest::get(&format!("{}/data/{}", self.url, path)).await {
             Ok(r) => Ok(r
                 .json::<Data>()
                 .await
                 .map_err(|source| reject::custom(StorageError::DeserializationError { source }))?),
             Err(source) => Err(reject::custom(StorageError::FetchError { source })),
+        }
+    }
+
+    async fn get_collection(&self, path: &str, skip: i64, page_size: i64) -> Result<DataCollection, Rejection> {
+        match reqwest::get(&format!("{}/data/{}?skip={}&page_size={}", self.url, path, skip, page_size)).await {
+            Ok(r) => {
+                Ok(r
+                .json::<DataCollection>()
+                .await
+                .map_err(|source| reject::custom(StorageError::DeserializationError { source }))?)
+            },
+            Err(source) => {
+                Err(reject::custom(StorageError::FetchError { source }))
+            },
         }
     }
 

@@ -175,7 +175,7 @@ pub mod data {
     }
     pub mod get {
         use crate::render::{RenderTemplate, Rendered, Renderer};
-        use crate::storage::Storer;
+        use crate::storage::{Data, Storer};
         use crate::token::TokenGenerator;
         use serde::{Deserialize, Serialize};
         use std::collections::HashMap;
@@ -188,6 +188,8 @@ pub mod data {
         struct WithoutTokenQueryParams {
             css: Option<String>,
             edit: Option<bool>,
+            fetch_id: Option<String>,
+            index: Option<i64>,
         }
 
         #[derive(Deserialize, Serialize)]
@@ -199,6 +201,8 @@ pub mod data {
         struct WithTokenQueryParams {
             css: Option<String>,
             edit: Option<bool>,
+            index: Option<i64>,
+            fetch_id: Option<String>,
         }
 
         #[derive(Deserialize, Serialize)]
@@ -245,9 +249,15 @@ pub mod data {
                             _ => None,
                         };
                         match query_params.edit {
-                            Some(edit) => {
-                                template_values.insert("edit".to_string(), edit.to_string())
-                            }
+                            Some(edit) => template_values.insert("edit".to_string(), edit.to_string()),
+                            _ => None,
+                        };
+                        match query_params.index {
+                            Some(index) => template_values.insert("index".to_string(), index.to_string()),
+                            _ => None,
+                        };
+                        match query_params.fetch_id {
+                            Some(fetch_id) => template_values.insert("fetch_id".to_string(), fetch_id.to_string()),
                             _ => None,
                         };
 
@@ -357,19 +367,74 @@ pub mod data {
                                         session_with_store,
                                     ))
                                 } else {
-                                    let (value, data_type): (String, String) =
-                                        data_store.get(&path_params.path).await.map_or_else(
-                                            |_| ("".to_string(), "string".to_string()),
-                                            |data| {
-                                                let val_str = match data.value.as_str() {
-                                                    Some(s) => s.to_owned(),
-                                                    None => "".to_string(),
-                                                };
-                                                (val_str, data.data_type)
-                                            },
-                                        );
-                                    template_values.insert("data".to_string(), value);
-                                    template_values.insert("data_type".to_string(), data_type);
+                                    // ----- start request query validation code -----
+                                    let mut is_valid_request = true;
+                                    match (&query_params.fetch_id, query_params.index) {
+                                        (Some(_fetch_id), None) => is_valid_request = false,
+                                        (None, Some(_index)) => is_valid_request = false,
+                                        _ => (),
+                                    }
+
+                                    if !is_valid_request {
+                                        return Ok::<_, Rejection>((
+                                            Rendered::new(
+                                                render_engine,
+                                                RenderTemplate {
+                                                    name: "secure",
+                                                    value: template_values,
+                                                },
+                                            )?,
+                                            path_params,
+                                            query_params,
+                                            token.clone(),
+                                            session_with_store,
+                                        ));
+                                    }
+                                    // ----- end request query validation code -----
+
+                                    // ----- start repository code -----
+                                    match (&query_params.fetch_id, query_params.index) {
+                                        // Collection request
+                                        (Some(_fetch_id), Some(index)) => {
+                                            let (value, data_type): (String, String) =
+                                                data_store.get_collection(&path_params.path, index, 1).await.map_or_else(
+                                                    |e| ("".to_string(), "string".to_string()),
+                                                    |mut data| {
+                                                        let (value, data_type) = match data.results.pop() {
+                                                            Some(s) => {
+                                                                let val_str = match s.value.as_str() {
+                                                                    Some(s) => s.to_owned(),
+                                                                    None => "".to_string(),
+                                                                };
+                                                                let data_type = s.data_type;
+                                                                (val_str, data_type)
+                                                            },
+                                                            None => ("".to_string(), "string".to_string()),
+                                                        };
+                                                        (value, data_type)
+                                                    },
+                                                );
+
+                                            template_values.insert("data".to_string(), value);
+                                            template_values.insert("data_type".to_string(), data_type);
+                                        },
+                                        _ => {
+                                            // Non-collection request
+                                            let (value, data_type): (String, String) =
+                                                data_store.get(&path_params.path).await.map_or_else(
+                                                    |_| ("".to_string(), "string".to_string()),
+                                                    |data| {
+                                                        let val_str = match data.value.as_str() {
+                                                            Some(s) => s.to_owned(),
+                                                            None => "".to_string(),
+                                                        };
+                                                        (val_str, data.data_type)
+                                                    },
+                                                );
+                                            template_values.insert("data".to_string(), value);
+                                            template_values.insert("data_type".to_string(), data_type);
+                                        },
+                                    }
 
                                     Ok::<_, Rejection>((
                                         Rendered::new(
@@ -384,6 +449,8 @@ pub mod data {
                                         token.clone(),
                                         session_with_store,
                                     ))
+
+                                    // ----- end repository code -----
                                 }
                             }
                             None => {

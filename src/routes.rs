@@ -188,6 +188,8 @@ pub mod data {
         struct WithoutTokenQueryParams {
             css: Option<String>,
             edit: Option<bool>,
+            fetch_id: Option<String>,
+            index: Option<i64>,
         }
 
         #[derive(Deserialize, Serialize)]
@@ -199,6 +201,8 @@ pub mod data {
         struct WithTokenQueryParams {
             css: Option<String>,
             edit: Option<bool>,
+            index: Option<i64>,
+            fetch_id: Option<String>,
         }
 
         #[derive(Deserialize, Serialize)]
@@ -247,6 +251,18 @@ pub mod data {
                         match query_params.edit {
                             Some(edit) => {
                                 template_values.insert("edit".to_string(), edit.to_string())
+                            }
+                            _ => None,
+                        };
+                        match query_params.index {
+                            Some(index) => {
+                                template_values.insert("index".to_string(), index.to_string())
+                            }
+                            _ => None,
+                        };
+                        match query_params.fetch_id {
+                            Some(fetch_id) => {
+                                template_values.insert("fetch_id".to_string(), fetch_id.to_string())
                             }
                             _ => None,
                         };
@@ -357,19 +373,85 @@ pub mod data {
                                         session_with_store,
                                     ))
                                 } else {
-                                    let (value, data_type): (String, String) =
-                                        data_store.get(&path_params.path).await.map_or_else(
-                                            |_| ("".to_string(), "string".to_string()),
-                                            |data| {
-                                                let val_str = match data.value.as_str() {
-                                                    Some(s) => s.to_owned(),
-                                                    None => "".to_string(),
-                                                };
-                                                (val_str, data.data_type)
-                                            },
-                                        );
-                                    template_values.insert("data".to_string(), value);
-                                    template_values.insert("data_type".to_string(), data_type);
+                                    // ----- start request query validation code -----
+                                    let mut is_valid_request = true;
+                                    match (&query_params.fetch_id, query_params.index) {
+                                        (Some(_fetch_id), None) => is_valid_request = false,
+                                        (None, Some(_index)) => is_valid_request = false,
+                                        _ => (),
+                                    }
+
+                                    if !is_valid_request {
+                                        return Ok::<_, Rejection>((
+                                            Rendered::new(
+                                                render_engine,
+                                                RenderTemplate {
+                                                    name: "secure",
+                                                    value: template_values,
+                                                },
+                                            )?,
+                                            path_params,
+                                            query_params,
+                                            token.clone(),
+                                            session_with_store,
+                                        ));
+                                    }
+                                    // ----- end request query validation code -----
+
+                                    // ----- start repository code -----
+                                    match (&query_params.fetch_id, query_params.index) {
+                                        // Collection request
+                                        (Some(_fetch_id), Some(index)) => {
+                                            let (value, data_type): (String, String) = data_store
+                                                .get_collection(&path_params.path, index, 1)
+                                                .await
+                                                .map_or_else(
+                                                    |_| ("".to_string(), "string".to_string()),
+                                                    |mut data| {
+                                                        let (value, data_type) =
+                                                            match data.results.pop() {
+                                                                Some(s) => {
+                                                                    let val_str =
+                                                                        match s.value.as_str() {
+                                                                            Some(s) => s.to_owned(),
+                                                                            None => "".to_string(),
+                                                                        };
+                                                                    let data_type = s.data_type;
+                                                                    (val_str, data_type)
+                                                                }
+                                                                None => (
+                                                                    "".to_string(),
+                                                                    "string".to_string(),
+                                                                ),
+                                                            };
+                                                        (value, data_type)
+                                                    },
+                                                );
+
+                                            template_values.insert("data".to_string(), value);
+                                            template_values
+                                                .insert("data_type".to_string(), data_type);
+                                        }
+                                        _ => {
+                                            // Non-collection request
+                                            let (value, data_type): (String, String) = data_store
+                                                .get(&path_params.path)
+                                                .await
+                                                .map_or_else(
+                                                    |_| ("".to_string(), "string".to_string()),
+                                                    |data| {
+                                                        let val_str = match data.value.as_str() {
+                                                            Some(s) => s.to_owned(),
+                                                            None => "".to_string(),
+                                                        };
+                                                        (val_str, data.data_type)
+                                                    },
+                                                );
+                                            template_values.insert("data".to_string(), value);
+                                            template_values
+                                                .insert("data_type".to_string(), data_type);
+                                        }
+                                    }
 
                                     Ok::<_, Rejection>((
                                         Rendered::new(
@@ -384,6 +466,8 @@ pub mod data {
                                         token.clone(),
                                         session_with_store,
                                     ))
+
+                                    // ----- end repository code -----
                                 }
                             }
                             None => {
@@ -462,30 +546,99 @@ pub mod data {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     mod get {
         mod with_token {
             use crate::render::{tests::MockRenderer, RenderTemplate};
             use crate::routes::data::get;
+            use crate::storage::{tests::MockStorer, Data};
             use crate::token::tests::MockTokenGenerator;
-            use std::collections::HashMap;
-            use std::sync::Arc;
-            use warp_sessions::MemoryStore;
+            use async_trait::async_trait;
+            use mockall::predicate::*;
+            use mockall::*;
+            use serde::Serialize;
+            use serde_json::json;
+
+            use std::{
+                collections::HashMap,
+                fmt::{self, Debug, Formatter},
+                sync::Arc,
+            };
+            use warp_sessions::{ArcSessionStore, Session, SessionStore};
+
+            mock! {
+                        pub SessionStore {}
+
+            #[async_trait]
+            impl SessionStore for SessionStore {
+                        async fn load_session(&self, cookie_value: String) -> async_session::Result<Option<Session>>;
+                        async fn store_session(&self, session: Session) -> async_session::Result<Option<String>>;
+                        async fn destroy_session(&self, session: Session) -> async_session::Result;
+                        async fn clear_store(&self) -> async_session::Result;
+                    }
+
+                                impl Debug for SessionStore {
+                                    fn fmt<'a>(&self, f: &mut Formatter<'a>) -> fmt::Result;
+                                }
+
+                                impl Clone for SessionStore {
+                                    fn clone(&self) -> Self;
+                                }
+                                }
+
+            mock! {
+                pub Session {
+                    fn new() -> Self;
+                            fn id_from_cookie_value(string: &str) -> Result<String, base64::DecodeError>;
+                            fn destroy(&mut self);
+                            fn is_destroyed(&self) -> bool;
+                    fn id(&self) -> &str;
+                    fn insert<T: Serialize +'static>(&mut self, key: &str, value: T) -> Result<(), serde_json::Error>;
+                    fn insert_raw(&mut self, key: &str, value: String);
+                    fn get<T: serde::de::DeserializeOwned + 'static>(&self, key: &str) -> Option<T>;
+                    fn get_raw(&self, key: &str) -> Option<String>;
+                }
+            impl Clone for Session {
+                fn clone(&self) -> Self;
+            }
+                impl Debug for Session {
+                    fn fmt<'a>(&self, f: &mut Formatter<'a>) -> fmt::Result;
+                }
+            }
 
             #[tokio::test]
             async fn with_token_with_no_query_params() {
-                let session_store = MemoryStore::new();
+                let mut session = Session::new();
+                session.set_cookie_value("testSID".to_owned());
+                session
+                    .insert(
+                        "token",
+                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C",
+                    )
+                    .unwrap();
+                let expected_sid = session.id().to_owned();
+
+                let mut mock_store = MockSessionStore::new();
+                mock_store
+                    .expect_load_session()
+                    .with(predicate::eq("testSID".to_owned()))
+                    .times(1)
+                    .return_once(move |_| Ok(Some(session)));
+                mock_store
+                    .expect_destroy_session()
+                    .withf(move |session: &Session| session.id() == expected_sid)
+                    .times(1)
+                    .return_once(move |_| Ok(()));
+                let session_store = ArcSessionStore(Arc::new(mock_store));
+
                 let mut render_engine = MockRenderer::new();
                 render_engine
                     .expect_render()
                     .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
                         let mut expected_value = HashMap::new();
                         expected_value.insert("path".to_string(), ".testKey.".to_string());
-                        expected_value.insert(
-                            "token".to_string(),
-                            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
-                                .to_string(),
-                        );
+                        expected_value.insert("data".to_owned(), "testValue".to_owned());
+                        expected_value.insert("data_type".to_owned(), "string".to_owned());
                         template.value == expected_value
                     })
                     .times(1)
@@ -502,14 +655,30 @@ mod test {
                         )
                     });
 
+                let mut storer = MockStorer::new();
+                storer
+                    .expect_get()
+                    .times(1)
+                    .with(predicate::eq(".testKey."))
+                    .returning(|_| {
+                        Ok(Data {
+                            data_type: "string".to_owned(),
+                            path: ".testKey.".to_owned(),
+                            value: json!("testValue"),
+                        })
+                    });
+
                 let with_token_filter = get::with_token(
                     session_store,
                     Arc::new(render_engine),
                     Arc::new(token_generator),
+                    Arc::new(storer),
                 );
 
                 let res = warp::test::request()
-                    .path("/data/.testKey.")
+                    .method("POST")
+                    .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C")
+                    .header("cookie", "sid=testSID")
                     .reply(&with_token_filter)
                     .await;
                 assert_eq!(res.status(), 200);

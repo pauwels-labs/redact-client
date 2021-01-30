@@ -179,12 +179,13 @@ pub mod data {
         use crate::token::TokenGenerator;
         use crate::RedisClient;
         use serde::{Deserialize, Serialize};
+        use serde_json::{Value, json};
         use std::collections::HashMap;
         use warp::{Filter, Rejection, Reply};
         use warp_sessions::{
             self, CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
         };
-        use crate::redis_client::RedisClientTrait;
+        use crate::redis_client::FetchCache;
 
         #[derive(Deserialize, Serialize)]
         struct WithoutTokenQueryParams {
@@ -300,12 +301,12 @@ pub mod data {
                 .and_then(warp_sessions::reply::with_session)
         }
 
-        pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: Storer, P: RedisClientTrait>(
+        pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: Storer, F: FetchCache>(
             session_store: S,
             render_engine: R,
             token_generator: T,
             data_store: D,
-            redis_client: P,
+            redis_client: F,
         ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
             warp::any()
                 .and(
@@ -337,7 +338,7 @@ pub mod data {
                           token: String,
                           render_engine: R,
                           data_store: D,
-                          redis_client: P | async move {
+                          redis_client: F | async move {
                         let mut template_values = HashMap::new();
                         match &query_params.css {
                             Some(css) => template_values.insert("css".to_string(), css.to_owned()),
@@ -400,13 +401,21 @@ pub mod data {
                                     // ----- start repository code -----
                                     match (&query_params.fetch_id, query_params.index) {
                                         // Collection request
-                                        (Some(_fetch_id), Some(index)) => {
-                                            let res = redis_client.set_str("abckey", "asd", 100).await;
+                                        (Some(fetch_id), Some(index)) => {
+                                            let mut vec = Vec::new();
+                                            vec.push(json!("abc"));
+                                            vec.push(json!("123"));
+                                            //let res = redis_client.set("abckey", &vec, 100).await;
 
                                             let (value, data_type): (String, String) =
                                                 data_store.get_collection(&path_params.path, index, 1).await.map_or_else(
                                                     |e| ("".to_string(), "string".to_string()),
                                                     |mut data| {
+                                                        println!("fetch_id::{}::start_index::{}", fetch_id, index);
+
+                                                        let dclone = data.results.clone();
+                                                        redis_client.set(fetch_id, index,  &dclone, 100);
+
                                                         let (value, data_type) = match data.results.pop() {
                                                             Some(s) => {
                                                                 let val_str = match s.value.as_str() {

@@ -21,7 +21,7 @@ pub enum StorageError {
 
 impl Reject for StorageError {}
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Data {
     pub data_type: String,
     pub path: String,

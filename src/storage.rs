@@ -36,19 +36,21 @@ pub struct DataCollection {
 #[async_trait]
 pub trait Storer: Clone + Send + Sync {
     async fn get(&self, path: &str) -> Result<Data, Rejection>;
-    async fn get_collection(&self, path: &str, skip: i64, page_size: i64) -> Result<DataCollection, Rejection>;
+    async fn get_collection(&self, path: &str, skip: i64) -> Result<DataCollection, Rejection>;
     async fn create(&self, path: &str, value: Data) -> Result<bool, Rejection>;
 }
 
 #[derive(Clone)]
 pub struct RedactStorer {
     url: String,
+    collection_page_size: i64,
 }
 
 impl RedactStorer {
-    pub fn new(url: &str) -> RedactStorer {
+    pub fn new(url: &str, collection_page_size: i64) -> RedactStorer {
         RedactStorer {
             url: url.to_string(),
+            collection_page_size,
         }
     }
 }
@@ -65,8 +67,8 @@ impl Storer for RedactStorer {
         }
     }
 
-    async fn get_collection(&self, path: &str, skip: i64, page_size: i64) -> Result<DataCollection, Rejection> {
-        match reqwest::get(&format!("{}/data/{}?skip={}&page_size={}", self.url, path, skip, page_size)).await {
+    async fn get_collection(&self, path: &str, skip: i64) -> Result<DataCollection, Rejection> {
+        match reqwest::get(&format!("{}/data/{}?skip={}&page_size={}", self.url, path, skip, self.collection_page_size)).await {
             Ok(r) => {
                 Ok(r
                 .json::<DataCollection>()

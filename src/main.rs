@@ -41,6 +41,29 @@ fn get_port<T: Configurator>(config: &T) -> u16 {
     }
 }
 
+fn get_page_size<T: Configurator>(config: &T) -> i64 {
+    match config.get_int("collection.pagesize") {
+        Ok(page_size) => {
+            if page_size < 1 || page_size > 100 {
+                println!(
+                    "page size value '{}' is not between 1 and 100, defaulting to 10",
+                    page_size
+                );
+                10
+            } else {
+                page_size
+            }
+        }
+        Err(e) => {
+            match e {
+                rust_config::ConfigError::NotFound(_) => (),
+                _ => println!("{}", e),
+            }
+            10
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // Extract config with a REDACT env var prefix
@@ -48,6 +71,9 @@ async fn main() {
 
     // Determine port to listen on
     let port = get_port(&config);
+
+    // Collection request page size - we may want to make this a query param at some point
+    let collection_page_size = get_page_size(&config);
 
     // Load HTML templates
     let mut template_mapping = HashMap::new();
@@ -57,14 +83,14 @@ async fn main() {
 
     // Get storage handle
     let storage_url = config.get_str("storage.url").unwrap();
-    let data_store = RedactStorer::new(&storage_url);
+    let data_store = RedactStorer::new(&storage_url, collection_page_size);
 
     // Create an in-memory session store
     let session_store = MemoryStore::new();
 
     // Connect to redis pool
     let redis_connection_string = config.get_str("redis.conn").unwrap();
-    let redis_connection = RedisClient::new(&redis_connection_string);
+    let redis_connection = RedisClient::new(&redis_connection_string, collection_page_size);
 
     // Create a token generator
     let token_generator = FromThreadRng::new();

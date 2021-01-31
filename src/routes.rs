@@ -186,6 +186,9 @@ pub mod data {
             self, CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
         };
         use crate::redis_client::FetchCache;
+        use futures::executor::block_on;
+
+        const PAGE_SIZE: i64 = 10; // TODO: this shouldn't be a constant and is already being pulled from config for storage&redis
 
         #[derive(Deserialize, Serialize)]
         struct WithoutTokenQueryParams {
@@ -402,37 +405,57 @@ pub mod data {
                                     match (&query_params.fetch_id, query_params.index) {
                                         // Collection request
                                         (Some(fetch_id), Some(index)) => {
-                                            let mut vec = Vec::new();
-                                            vec.push(json!("abc"));
-                                            vec.push(json!("123"));
-                                            //let res = redis_client.set("abckey", &vec, 100).await;
 
-                                            let (value, data_type): (String, String) =
-                                                data_store.get_collection(&path_params.path, index, 1).await.map_or_else(
-                                                    |e| ("".to_string(), "string".to_string()),
-                                                    |mut data| {
-                                                        println!("fetch_id::{}::start_index::{}", fetch_id, index);
+                                            match block_on(redis_client.exists_index(fetch_id, index)).unwrap() {
+                                                true => {
+                                                    println!("cache hit, getting from cache");
 
-                                                        let dclone = data.results.clone();
-                                                        redis_client.set(fetch_id, index,  &dclone, 100);
+                                                    let (value, data_type): (String, String) = block_on(redis_client.get_index(fetch_id, index)).map_or_else(
+                                                        |e| ("".to_string(), "string".to_string()),
+                                                        |mut data| {
+                                                            let val_str = match data.value.as_str() {
+                                                                Some(s) => s.to_owned(),
+                                                                None => "".to_string(),
+                                                            };
+                                                            let data_type = data.data_type;
+                                                            (val_str, data_type)
+                                                        }
+                                                    );
 
-                                                        let (value, data_type) = match data.results.pop() {
-                                                            Some(s) => {
-                                                                let val_str = match s.value.as_str() {
+                                                    template_values.insert("data".to_string(), value);
+                                                    template_values.insert("data_type".to_string(), data_type);
+                                                },
+                                                false => {
+                                                    println!("getting from db");
+                                                    let page_start_index = index / PAGE_SIZE;
+                                                    let (value, data_type): (String, String) =
+                                                        data_store.get_collection(&path_params.path, page_start_index).await.map_or_else(
+                                                            |e| ("".to_string(), "string".to_string()),
+                                                            |mut data| {
+
+                                                                // TODO: don't block, handle (or just log) error
+                                                                match block_on(redis_client.set(fetch_id, page_start_index,  &data.results.clone(), 60)) {
+                                                                    Ok(_) => println!("cache put success"),
+                                                                    Err(_) => println!("Error updating fetch cache")
+                                                                }
+
+                                                                let page_index = index % PAGE_SIZE;
+                                                                let result_at_index = data.results[page_index as usize].clone();
+                                                                let val_str = match result_at_index.value.as_str() {
                                                                     Some(s) => s.to_owned(),
                                                                     None => "".to_string(),
                                                                 };
-                                                                let data_type = s.data_type;
-                                                                (val_str, data_type)
+                                                                (val_str, result_at_index.data_type)
                                                             },
-                                                            None => ("".to_string(), "string".to_string()),
-                                                        };
-                                                        (value, data_type)
-                                                    },
-                                                );
+                                                        );
 
-                                            template_values.insert("data".to_string(), value);
-                                            template_values.insert("data_type".to_string(), data_type);
+                                                    template_values.insert("data".to_string(), value);
+                                                    template_values.insert("data_type".to_string(), data_type);
+                                                }
+                                            }
+
+
+
                                         },
                                         _ => {
                                             // Non-collection request

@@ -408,8 +408,6 @@ pub mod data {
 
                                             match block_on(redis_client.exists_index(fetch_id, index)).unwrap() {
                                                 true => {
-                                                    println!("cache hit, getting from cache");
-
                                                     let (value, data_type): (String, String) = block_on(redis_client.get_index(fetch_id, index)).map_or_else(
                                                         |e| ("".to_string(), "string".to_string()),
                                                         |mut data| {
@@ -426,7 +424,6 @@ pub mod data {
                                                     template_values.insert("data_type".to_string(), data_type);
                                                 },
                                                 false => {
-                                                    println!("getting from db");
                                                     let page_start_index = index / PAGE_SIZE;
                                                     let (value, data_type): (String, String) =
                                                         data_store.get_collection(&path_params.path, page_start_index).await.map_or_else(

@@ -5,7 +5,7 @@ use mobc_redis::{redis, RedisConnectionManager};
 use std::time::Duration;
 use thiserror::Error;
 use mobc_redis::redis::{RedisError, AsyncCommands, RedisResult};
-use serde_json::Value;
+use serde_json::{Value, Error};
 use std::str::from_utf8;
 use crate::storage::Data;
 
@@ -32,14 +32,18 @@ pub struct RedisClient {
 
 #[derive(Error, Debug)]
 pub enum RedisClientError {
-    #[error("Failed to fetch data")]
+    #[error("Failed to connect to Redis")]
     ConnectionError { source: mobc_redis::redis::RedisError },
 
-    #[error("Failed to fetch data")]
-    ConnectionError2 { source: ::redis::RedisError },
+    #[error("Failed to get a redis connection from the connection pool")]
+    RedisPoolError { source: mobc::Error<RedisError> },
 
-    #[error("Failed to fetch data")]
-    ConnectionError3 { source: mobc::Error<RedisError> },
+
+    #[error("Failed to serialize collection")]
+    SerializationError { source: serde_json::Error },
+
+    #[error("Failed to deserialize collection")]
+    DeserializationError { source: serde_json::Error },
 }
 
 
@@ -58,8 +62,7 @@ impl RedisClient {
 
     async fn get_con(pool: &MobcPool) -> Result<MobcCon, RedisClientError> {
         pool.get().await.map_err(|source| {
-            eprintln!("error connecting to redis: {}", source);
-            RedisClientError::ConnectionError3 { source }
+            RedisClientError::RedisPoolError { source }
         })
     }
 }
@@ -68,9 +71,8 @@ impl RedisClient {
 impl FetchCache for RedisClient {
     async fn set(&self, fetch_id: &str, start_index: i64, value: &Vec<Data>, ttl_seconds: usize) -> Result<(), RedisClientError> {
         // TODO: if start_index%PAGE_SIZE != 0 return error
-        let serialized_collection = serde_json::to_string(value).unwrap();
+        let serialized_collection = serde_json::to_string(value).map_err(|source| RedisClientError::SerializationError { source })?;
         let cache_key =  format!("fetch_id::{}::start_index::{}", fetch_id, start_index);
-        println!("{}", cache_key);
 
         let mut con = RedisClient::get_con(&self.pool).await?;
         con.set(&cache_key, serialized_collection).await.map_err(|source| RedisClientError::ConnectionError { source })?;
@@ -86,7 +88,7 @@ impl FetchCache for RedisClient {
 
         let mut con = RedisClient::get_con(&self.pool).await?;
         let string_collection: String = con.get(&cache_key).await.map_err(|source| RedisClientError::ConnectionError { source })?;
-        let page: Vec<Data> = serde_json::from_str(&string_collection).unwrap();
+        let page: Vec<Data> = serde_json::from_str(&string_collection).map_err(|source| RedisClientError::DeserializationError { source })?;
 
         let result_index = index % self.collection_page_size;
         let data: Data = page[result_index as usize].clone();

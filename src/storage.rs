@@ -43,11 +43,11 @@ pub trait Storer: Clone + Send + Sync {
 #[derive(Clone)]
 pub struct RedactStorer {
     url: String,
-    collection_page_size: i64,
+    collection_page_size: u8,
 }
 
 impl RedactStorer {
-    pub fn new(url: &str, collection_page_size: i64) -> RedactStorer {
+    pub fn new(url: &str, collection_page_size: u8) -> RedactStorer {
         RedactStorer {
             url: url.to_string(),
             collection_page_size,

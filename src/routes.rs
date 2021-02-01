@@ -177,9 +177,7 @@ pub mod data {
         use crate::render::{RenderTemplate, Rendered, Renderer};
         use crate::storage::Storer;
         use crate::token::TokenGenerator;
-        use crate::RedisClient;
         use serde::{Deserialize, Serialize};
-        use serde_json::{Value, json};
         use std::collections::HashMap;
         use warp::{Filter, Rejection, Reply};
         use warp_sessions::{
@@ -188,7 +186,7 @@ pub mod data {
         use crate::redis_client::FetchCache;
         use futures::executor::block_on;
 
-        const PAGE_SIZE: i64 = 10; // TODO: this shouldn't be a constant and is already being pulled from config for storage&redis
+        const PAGE_SIZE: u8 = 10; // TODO: this shouldn't be a constant and is already being pulled from config for storage&redis
 
         #[derive(Deserialize, Serialize)]
         struct WithoutTokenQueryParams {
@@ -410,7 +408,7 @@ pub mod data {
                                                 true => {
                                                     let (value, data_type): (String, String) = block_on(redis_client.get_index(fetch_id, index)).map_or_else(
                                                         |e| ("".to_string(), "string".to_string()),
-                                                        |mut data| {
+                                                        | data| {
                                                             let val_str = match data.value.as_str() {
                                                                 Some(s) => s.to_owned(),
                                                                 None => "".to_string(),
@@ -424,11 +422,11 @@ pub mod data {
                                                     template_values.insert("data_type".to_string(), data_type);
                                                 },
                                                 false => {
-                                                    let page_start_index = index / PAGE_SIZE;
+                                                    let page_start_index = index / i64::from(PAGE_SIZE);
                                                     let (value, data_type): (String, String) =
                                                         data_store.get_collection(&path_params.path, page_start_index).await.map_or_else(
                                                             |e| ("".to_string(), "string".to_string()),
-                                                            |mut data| {
+                                                            | data| {
 
                                                                 // TODO: don't block, handle (or just log) error
                                                                 match block_on(redis_client.set(fetch_id, page_start_index,  &data.results.clone(), 60)) {
@@ -436,7 +434,7 @@ pub mod data {
                                                                     Err(_) => println!("Error updating fetch cache")
                                                                 }
 
-                                                                let page_index = index % PAGE_SIZE;
+                                                                let page_index = index % i64::from(PAGE_SIZE);
                                                                 let result_at_index = data.results[page_index as usize].clone();
                                                                 let val_str = match result_at_index.value.as_str() {
                                                                     Some(s) => s.to_owned(),

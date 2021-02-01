@@ -13,6 +13,7 @@ use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
 use redis_client::RedisClient;
+use std::convert::TryFrom;
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -41,7 +42,7 @@ fn get_port<T: Configurator>(config: &T) -> u16 {
     }
 }
 
-fn get_page_size<T: Configurator>(config: &T) -> i64 {
+fn get_page_size<T: Configurator>(config: &T) -> u8 {
     match config.get_int("collection.pagesize") {
         Ok(page_size) => {
             if page_size < 1 || page_size > 100 {
@@ -51,7 +52,7 @@ fn get_page_size<T: Configurator>(config: &T) -> i64 {
                 );
                 10
             } else {
-                page_size
+                u8::try_from(page_size).unwrap()
             }
         }
         Err(e) => {

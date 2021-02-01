@@ -1,12 +1,9 @@
 use async_trait::async_trait;
 use mobc::{Connection, Pool};
-use ::redis::FromRedisValue;
 use mobc_redis::{redis, RedisConnectionManager};
 use std::time::Duration;
 use thiserror::Error;
-use mobc_redis::redis::{RedisError, AsyncCommands, RedisResult};
-use serde_json::{Value, Error};
-use std::str::from_utf8;
+use mobc_redis::redis::{RedisError, AsyncCommands};
 use crate::storage::Data;
 
 pub type MobcPool = Pool<RedisConnectionManager>;
@@ -27,7 +24,7 @@ pub trait FetchCache: Clone + Send + Sync {
 #[derive(Clone)]
 pub struct RedisClient {
     pool: MobcPool,
-    collection_page_size: i64
+    collection_page_size: u8,
 }
 
 #[derive(Error, Debug)]
@@ -48,7 +45,7 @@ pub enum RedisClientError {
 
 
 impl RedisClient {
-    pub fn new(connection_string: &str, collection_page_size: i64) -> RedisClient {
+    pub fn new(connection_string: &str, collection_page_size: u8) -> RedisClient {
         let client = redis::Client::open(connection_string).map_err(|source| RedisClientError::ConnectionError { source }).unwrap();
         let manager = RedisConnectionManager::new(client);
         let pool = Pool::builder()
@@ -83,20 +80,20 @@ impl FetchCache for RedisClient {
     }
 
     async fn get_index(&self, fetch_id: &str, index: i64) -> Result<Data, RedisClientError> {
-        let start_index = index / self.collection_page_size;
+        let start_index = index / i64::from(self.collection_page_size);
         let cache_key =  format!("fetch_id::{}::start_index::{}", fetch_id, start_index);
 
         let mut con = RedisClient::get_con(&self.pool).await?;
         let string_collection: String = con.get(&cache_key).await.map_err(|source| RedisClientError::ConnectionError { source })?;
         let page: Vec<Data> = serde_json::from_str(&string_collection).map_err(|source| RedisClientError::DeserializationError { source })?;
 
-        let result_index = index % self.collection_page_size;
+        let result_index = index % i64::from(self.collection_page_size);
         let data: Data = page[result_index as usize].clone();
         Ok(data)
     }
 
     async fn exists_index(&self, fetch_id: &str, index: i64) -> Result<bool, RedisClientError> {
-        let start_index = index / self.collection_page_size;
+        let start_index = index / i64::from(self.collection_page_size);
         let key =  format!("fetch_id::{}::start_index::{}", fetch_id, start_index);
         let mut con = RedisClient::get_con(&self.pool).await?;
         con.exists(key).await.map_err(|source| RedisClientError::ConnectionError { source })

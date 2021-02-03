@@ -421,11 +421,11 @@ pub mod data {
                                                     template_values.insert("data_type".to_string(), data_type);
                                                 },
                                                 false => {
-                                                    let page_start_index = index / i64::from(PAGE_SIZE);
+                                                    let page_number = index / i64::from(PAGE_SIZE);
                                                     let (value, data_type): (String, String) =
-                                                        match data_store.get_collection(&path_params.path, page_start_index).await {
+                                                        match data_store.get_collection(&path_params.path, page_number * i64::from(PAGE_SIZE)).await {
                                                             Ok(data) => {
-                                                                match redis_client.set(fetch_id, page_start_index,  &data.results.clone(), 5).await {
+                                                                match redis_client.set(fetch_id, page_number,&data.results.clone(), 60).await {
                                                                     Ok(_) => println!("cache put success"),
                                                                     Err(_) => println!("Error updating fetch cache")
                                                                 }

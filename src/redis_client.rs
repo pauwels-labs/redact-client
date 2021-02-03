@@ -69,10 +69,9 @@ impl RedisClient {
 
 #[async_trait]
 impl FetchCache for RedisClient {
-    async fn set(&self, fetch_id: &str, start_index: i64, value: &Vec<Data>, ttl_seconds: usize) -> Result<(), RedisClientError> {
-        // TODO: if start_index%PAGE_SIZE != 0 return error
+    async fn set(&self, fetch_id: &str, page_number: i64, value: &Vec<Data>, ttl_seconds: usize) -> Result<(), RedisClientError> {
         let serialized_collection = serde_json::to_string(value).map_err(|source| RedisClientError::SerializationError { source })?;
-        let cache_key =  format!("fetch_id::{}::start_index::{}", fetch_id, start_index);
+        let cache_key =  format!("fetch_id::{}::start_index::{}", fetch_id, page_number*i64::from(self.collection_page_size));
 
         let mut con = RedisClient::get_con(&self.pool).await?;
         con.set(&cache_key, serialized_collection).await.map_err(|source| RedisClientError::ConnectionError { source })?;

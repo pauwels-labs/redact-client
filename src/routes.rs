@@ -184,7 +184,6 @@ pub mod data {
             self, CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
         };
         use crate::redis_client::FetchCache;
-        use futures::executor::block_on;
 
         const PAGE_SIZE: u8 = 10; // TODO: this shouldn't be a constant and is already being pulled from config for storage&redis
 
@@ -404,10 +403,10 @@ pub mod data {
                                         // Collection request
                                         (Some(fetch_id), Some(index)) => {
 
-                                            match block_on(redis_client.exists_index(fetch_id, index)).unwrap() {
+                                            match redis_client.exists_index(fetch_id, index).await.unwrap() {
                                                 true => {
-                                                    let (value, data_type): (String, String) = block_on(redis_client.get_index(fetch_id, index)).map_or_else(
-                                                        |e| ("".to_string(), "string".to_string()),
+                                                    let (value, data_type): (String, String) = redis_client.get_index(fetch_id, index).await.map_or_else(
+                                                        |_e| ("".to_string(), "string".to_string()),
                                                         | data| {
                                                             let val_str = match data.value.as_str() {
                                                                 Some(s) => s.to_owned(),
@@ -424,12 +423,9 @@ pub mod data {
                                                 false => {
                                                     let page_start_index = index / i64::from(PAGE_SIZE);
                                                     let (value, data_type): (String, String) =
-                                                        data_store.get_collection(&path_params.path, page_start_index).await.map_or_else(
-                                                            |e| ("".to_string(), "string".to_string()),
-                                                            | data| {
-
-                                                                // TODO: don't block, handle (or just log) error
-                                                                match block_on(redis_client.set(fetch_id, page_start_index,  &data.results.clone(), 60)) {
+                                                        match data_store.get_collection(&path_params.path, page_start_index).await {
+                                                            Ok(data) => {
+                                                                match redis_client.set(fetch_id, page_start_index,  &data.results.clone(), 60).await {
                                                                     Ok(_) => println!("cache put success"),
                                                                     Err(_) => println!("Error updating fetch cache")
                                                                 }
@@ -442,7 +438,8 @@ pub mod data {
                                                                 };
                                                                 (val_str, result_at_index.data_type)
                                                             },
-                                                        );
+                                                            Err(_e) => ("".to_string(), "string".to_string())
+                                                        };
 
                                                     template_values.insert("data".to_string(), value);
                                                     template_values.insert("data_type".to_string(), data_type);

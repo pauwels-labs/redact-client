@@ -425,18 +425,25 @@ pub mod data {
                                                     let (value, data_type): (String, String) =
                                                         match data_store.get_collection(&path_params.path, page_start_index).await {
                                                             Ok(data) => {
-                                                                match redis_client.set(fetch_id, page_start_index,  &data.results.clone(), 60).await {
+                                                                match redis_client.set(fetch_id, page_start_index,  &data.results.clone(), 5).await {
                                                                     Ok(_) => println!("cache put success"),
                                                                     Err(_) => println!("Error updating fetch cache")
                                                                 }
 
-                                                                let page_index = index % i64::from(PAGE_SIZE);
-                                                                let result_at_index = data.results[page_index as usize].clone();
-                                                                let val_str = match result_at_index.value.as_str() {
-                                                                    Some(s) => s.to_owned(),
-                                                                    None => "".to_string(),
-                                                                };
-                                                                (val_str, result_at_index.data_type)
+                                                                let page_index = (index % i64::from(PAGE_SIZE)) as usize;
+                                                                match page_index >= data.results.len() {
+                                                                    true => ("".to_string(), "string".to_string()),
+                                                                    false => {
+                                                                        let result_at_index = data.results[page_index].clone();
+                                                                        let val_str = match result_at_index.value.as_str() {
+                                                                            Some(s) => s.to_owned(),
+                                                                            None => "".to_string(),
+                                                                        };
+                                                                        (val_str, result_at_index.data_type)
+                                                                    }
+                                                                }
+
+
                                                             },
                                                             Err(_e) => ("".to_string(), "string".to_string())
                                                         };

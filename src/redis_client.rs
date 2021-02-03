@@ -41,6 +41,9 @@ pub enum RedisClientError {
 
     #[error("Failed to deserialize collection")]
     DeserializationError { source: serde_json::Error },
+
+    #[error("Item not found")]
+    ItemNotFound { },
 }
 
 
@@ -87,9 +90,12 @@ impl FetchCache for RedisClient {
         let string_collection: String = con.get(&cache_key).await.map_err(|source| RedisClientError::ConnectionError { source })?;
         let page: Vec<Data> = serde_json::from_str(&string_collection).map_err(|source| RedisClientError::DeserializationError { source })?;
 
-        let result_index = index % i64::from(self.collection_page_size);
-        let data: Data = page[result_index as usize].clone();
-        Ok(data)
+        let result_index = (index % i64::from(self.collection_page_size)) as usize;
+        match result_index >= page.len() {
+            true => Err(RedisClientError::ItemNotFound {}),
+            false => Ok(page[result_index].clone())
+        }
+
     }
 
     async fn exists_index(&self, fetch_id: &str, index: i64) -> Result<bool, RedisClientError> {

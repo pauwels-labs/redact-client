@@ -425,8 +425,8 @@ pub mod data {
                                                         match data_store.get_collection(&path_params.path, page_number * i64::from(page_size)).await {
                                                             Ok(data) => {
                                                                 match redis_client.set(fetch_id, page_number,&data.results.clone(), 60).await {
-                                                                    Ok(_) => println!("cache put success"),
-                                                                    Err(_) => println!("Error updating fetch cache")
+                                                                    Ok(()) => { },
+                                                                    Err(err) => eprintln!("Error: {:?}", err)
                                                                 }
 
                                                                 let page_index = (index % i64::from(page_size)) as usize;

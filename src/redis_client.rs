@@ -78,7 +78,7 @@ impl FetchCacher for RedisClient {
         if ttl_seconds > 0 {
             con.expire(&cache_key, ttl_seconds).await.map_err(|source| RedisClientError::ConnectionError { source })?;
         }
-        Ok(())
+        Err(RedisClientError::ItemNotFound{})
     }
 
     async fn get_index(&self, fetch_id: &str, index: i64) -> Result<Data, RedisClientError> {

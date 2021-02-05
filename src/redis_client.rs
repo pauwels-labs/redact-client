@@ -19,6 +19,7 @@ pub trait FetchCacher: Clone + Send + Sync {
     async fn set(&self, fetch_id: &str, index: i64, value: &Vec<Data>, ttl_seconds: usize) -> Result<(), RedisClientError>;
     async fn get_index(&self, key: &str, index: i64) -> Result<Data, RedisClientError>;
     async fn exists_index(&self, key: &str, index: i64) -> Result<bool, RedisClientError>;
+    fn get_collection_size(&self) -> u8;
 }
 
 #[derive(Clone)]
@@ -45,7 +46,6 @@ pub enum RedisClientError {
     #[error("Item not found")]
     ItemNotFound { },
 }
-
 
 impl RedisClient {
     pub fn new(connection_string: &str, collection_page_size: u8) -> Result<RedisClient, RedisClientError> {
@@ -102,6 +102,10 @@ impl FetchCacher for RedisClient {
         let key =  format!("fetch_id::{}::start_index::{}", fetch_id, start_index);
         let mut con = RedisClient::get_con(&self.pool).await?;
         con.exists(key).await.map_err(|source| RedisClientError::ConnectionError { source })
+    }
+
+    fn get_collection_size(&self) -> u8 {
+        return self.collection_page_size;
     }
 }
 

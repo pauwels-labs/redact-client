@@ -185,8 +185,6 @@ pub mod data {
         };
         use crate::redis_client::FetchCacher;
 
-        const PAGE_SIZE: u8 = 10; // TODO: this shouldn't be a constant and is already being pulled from config for storage&redis
-
         #[derive(Deserialize, Serialize)]
         struct WithoutTokenQueryParams {
             css: Option<String>,
@@ -421,16 +419,17 @@ pub mod data {
                                                     template_values.insert("data_type".to_string(), data_type);
                                                 },
                                                 false => {
-                                                    let page_number = index / i64::from(PAGE_SIZE);
+                                                    let page_size = redis_client.get_collection_size();
+                                                    let page_number = index / i64::from(page_size);
                                                     let (value, data_type): (String, String) =
-                                                        match data_store.get_collection(&path_params.path, page_number * i64::from(PAGE_SIZE)).await {
+                                                        match data_store.get_collection(&path_params.path, page_number * i64::from(page_size)).await {
                                                             Ok(data) => {
                                                                 match redis_client.set(fetch_id, page_number,&data.results.clone(), 60).await {
                                                                     Ok(_) => println!("cache put success"),
                                                                     Err(_) => println!("Error updating fetch cache")
                                                                 }
 
-                                                                let page_index = (index % i64::from(PAGE_SIZE)) as usize;
+                                                                let page_index = (index % i64::from(page_size)) as usize;
                                                                 match page_index >= data.results.len() {
                                                                     true => ("".to_string(), "string".to_string()),
                                                                     false => {

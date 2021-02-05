@@ -183,7 +183,7 @@ pub mod data {
         use warp_sessions::{
             self, CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
         };
-        use crate::redis_client::FetchCache;
+        use crate::redis_client::FetchCacher;
 
         const PAGE_SIZE: u8 = 10; // TODO: this shouldn't be a constant and is already being pulled from config for storage&redis
 
@@ -301,7 +301,7 @@ pub mod data {
                 .and_then(warp_sessions::reply::with_session)
         }
 
-        pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: Storer, F: FetchCache>(
+        pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: Storer, F: FetchCacher>(
             session_store: S,
             render_engine: R,
             token_generator: T,

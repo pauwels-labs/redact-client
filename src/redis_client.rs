@@ -15,7 +15,7 @@ const CACHE_POOL_TIMEOUT_SECONDS: u64 = 1;
 const CACHE_POOL_EXPIRE_SECONDS: u64 = 60;
 
 #[async_trait]
-pub trait FetchCache: Clone + Send + Sync {
+pub trait FetchCacher: Clone + Send + Sync {
     async fn set(&self, fetch_id: &str, index: i64, value: &Vec<Data>, ttl_seconds: usize) -> Result<(), RedisClientError>;
     async fn get_index(&self, key: &str, index: i64) -> Result<Data, RedisClientError>;
     async fn exists_index(&self, key: &str, index: i64) -> Result<bool, RedisClientError>;
@@ -68,7 +68,7 @@ impl RedisClient {
 }
 
 #[async_trait]
-impl FetchCache for RedisClient {
+impl FetchCacher for RedisClient {
     async fn set(&self, fetch_id: &str, page_number: i64, value: &Vec<Data>, ttl_seconds: usize) -> Result<(), RedisClientError> {
         let serialized_collection = serde_json::to_string(value).map_err(|source| RedisClientError::SerializationError { source })?;
         let cache_key =  format!("fetch_id::{}::start_index::{}", fetch_id, page_number*i64::from(self.collection_page_size));

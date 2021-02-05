@@ -91,7 +91,7 @@ async fn main() {
 
     // Connect to redis pool
     let redis_connection_string = config.get_str("redis.conn").unwrap();
-    let redis_connection = RedisClient::new(&redis_connection_string, collection_page_size);
+    let redis_connection = RedisClient::new(&redis_connection_string, collection_page_size).unwrap();
 
     // Create a token generator
     let token_generator = FromThreadRng::new();

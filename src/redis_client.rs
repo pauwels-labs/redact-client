@@ -48,8 +48,8 @@ pub enum RedisClientError {
 
 
 impl RedisClient {
-    pub fn new(connection_string: &str, collection_page_size: u8) -> RedisClient {
-        let client = redis::Client::open(connection_string).map_err(|source| RedisClientError::ConnectionError { source }).unwrap();
+    pub fn new(connection_string: &str, collection_page_size: u8) -> Result<RedisClient, RedisClientError> {
+        let client = redis::Client::open(connection_string).map_err(|source| RedisClientError::ConnectionError { source })?;
         let manager = RedisConnectionManager::new(client);
         let pool = Pool::builder()
             .get_timeout(Some(Duration::from_secs(CACHE_POOL_TIMEOUT_SECONDS)))
@@ -57,7 +57,7 @@ impl RedisClient {
             .max_idle(CACHE_POOL_MAX_IDLE)
             .max_lifetime(Some(Duration::from_secs(CACHE_POOL_EXPIRE_SECONDS)))
             .build(manager);
-        RedisClient { pool, collection_page_size }
+        Ok(RedisClient { pool, collection_page_size })
     }
 
     async fn get_con(pool: &MobcPool) -> Result<MobcCon, RedisClientError> {

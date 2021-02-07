@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::ops::Deref;
+use std::sync::Arc;
 use thiserror::Error;
 use warp::{
     reject::{self, Reject},
@@ -30,14 +32,42 @@ pub struct Data {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DataCollection {
-    pub results: Vec<Data>
+    pub results: Vec<Data>,
 }
 
 #[async_trait]
 pub trait Storer: Clone + Send + Sync {
     async fn get(&self, path: &str) -> Result<Data, Rejection>;
-    async fn get_collection(&self, path: &str, skip: i64, page_size: i64) -> Result<DataCollection, Rejection>;
+    async fn get_collection(
+        &self,
+        path: &str,
+        skip: i64,
+        page_size: i64,
+    ) -> Result<DataCollection, Rejection>;
     async fn create(&self, path: &str, value: Data) -> Result<bool, Rejection>;
+}
+
+#[async_trait]
+impl<U> Storer for Arc<U>
+where
+    U: Storer,
+{
+    async fn get(&self, path: &str) -> Result<Data, Rejection> {
+        self.deref().get(path).await
+    }
+
+    async fn get_collection(
+        &self,
+        path: &str,
+        skip: i64,
+        page_size: i64,
+    ) -> Result<DataCollection, Rejection> {
+        self.deref().get_collection(path, skip, page_size).await
+    }
+
+    async fn create(&self, path: &str, value: Data) -> Result<bool, Rejection> {
+        self.deref().create(path, value).await
+    }
 }
 
 #[derive(Clone)]
@@ -65,17 +95,23 @@ impl Storer for RedactStorer {
         }
     }
 
-    async fn get_collection(&self, path: &str, skip: i64, page_size: i64) -> Result<DataCollection, Rejection> {
-        match reqwest::get(&format!("{}/data/{}?skip={}&page_size={}", self.url, path, skip, page_size)).await {
-            Ok(r) => {
-                Ok(r
+    async fn get_collection(
+        &self,
+        path: &str,
+        skip: i64,
+        page_size: i64,
+    ) -> Result<DataCollection, Rejection> {
+        match reqwest::get(&format!(
+            "{}/data/{}?skip={}&page_size={}",
+            self.url, path, skip, page_size
+        ))
+        .await
+        {
+            Ok(r) => Ok(r
                 .json::<DataCollection>()
                 .await
-                .map_err(|source| reject::custom(StorageError::DeserializationError { source }))?)
-            },
-            Err(source) => {
-                Err(reject::custom(StorageError::FetchError { source }))
-            },
+                .map_err(|source| reject::custom(StorageError::DeserializationError { source }))?),
+            Err(source) => Err(reject::custom(StorageError::FetchError { source })),
         }
     }
 
@@ -89,5 +125,32 @@ impl Storer for RedactStorer {
             Ok(_) => Ok(true),
             Err(source) => Err(reject::custom(StorageError::CreateError { source })),
         }
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::{Data, DataCollection, Storer};
+    use async_trait::async_trait;
+    use mockall::predicate::*;
+    use mockall::*;
+    use warp::Rejection;
+
+    mock! {
+    pub Storer {}
+    impl Clone for Storer {
+            fn clone(&self) -> Self;
+    }
+    #[async_trait]
+    impl Storer for Storer {
+        async fn get(&self, path: &str) -> Result<Data, Rejection>;
+        async fn get_collection(
+        &self,
+        path: &str,
+        skip: i64,
+        page_size: i64,
+        ) -> Result<DataCollection, Rejection>;
+        async fn create(&self, path: &str, value: Data) -> Result<bool, Rejection>;
+    }
     }
 }

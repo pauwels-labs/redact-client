@@ -1,5 +1,6 @@
 use rand::{thread_rng, Rng};
 use sha2::{Digest, Sha256};
+use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
 use warp::reject::Reject;
@@ -16,7 +17,16 @@ pub enum TokenGenerationError {
 impl Reject for TokenGenerationError {}
 
 pub trait TokenGenerator: Clone + Send + Sync {
-    fn generate_token(&mut self) -> Result<String, TokenGenerationError>;
+    fn generate_token(&self) -> Result<String, TokenGenerationError>;
+}
+
+impl<T> TokenGenerator for Arc<T>
+where
+    T: TokenGenerator,
+{
+    fn generate_token(&self) -> Result<String, TokenGenerationError> {
+        self.deref().generate_token()
+    }
 }
 
 pub struct FromCustomRng<T: Rng + Send + Sync> {
@@ -35,7 +45,7 @@ impl<T: Rng + Send + Sync> Clone for FromCustomRng<T> {
 }
 
 impl<T: Rng + Send + Sync> TokenGenerator for FromCustomRng<T> {
-    fn generate_token(&mut self) -> Result<String, TokenGenerationError> {
+    fn generate_token(&self) -> Result<String, TokenGenerationError> {
         // Generate 32 cryptographically secure random bytes
         let mut random_bytes: [u8; 32] = [0; 32];
         self.rand_source
@@ -55,7 +65,7 @@ impl<T: Rng + Send + Sync> TokenGenerator for FromCustomRng<T> {
 }
 
 impl TokenGenerator for FromThreadRng {
-    fn generate_token(&mut self) -> Result<String, TokenGenerationError> {
+    fn generate_token(&self) -> Result<String, TokenGenerationError> {
         // Generate 32 cryptographically secure random bytes
         let mut random_bytes: [u8; 32] = [0; 32];
         thread_rng()
@@ -87,7 +97,7 @@ impl FromThreadRng {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use crate::token::{FromCustomRng, FromThreadRng, TokenGenerationError, TokenGenerator};
     use mockall::predicate::*;
     use mockall::*;
@@ -95,18 +105,28 @@ mod tests {
     use rand_pcg::Pcg64;
 
     mock! {
+    pub TokenGenerator {}
+    impl TokenGenerator for TokenGenerator {
+            fn generate_token(&self) -> Result<String, TokenGenerationError>;
+    }
+    impl Clone for TokenGenerator {
+            fn clone(&self) -> Self;
+    }
+    }
+
+    mock! {
     FailingRng {}
     impl RngCore for FailingRng {
-        fn fill_bytes(&mut self, dest: &mut [u8]);
-        fn next_u32(&mut self) -> u32;
-        fn next_u64(&mut self) -> u64;
-        fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error>;
+            fn fill_bytes(&mut self, dest: &mut [u8]);
+            fn next_u32(&mut self) -> u32;
+            fn next_u64(&mut self) -> u64;
+            fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error>;
     }
     }
 
     #[test]
     fn test_token_generation_with_deterministic_rng() {
-        let mut token_generator = FromCustomRng::new(Pcg64::seed_from_u64(1));
+        let token_generator = FromCustomRng::new(Pcg64::seed_from_u64(1));
         let token = token_generator.generate_token().unwrap();
         assert_eq!(
             token,
@@ -116,7 +136,7 @@ mod tests {
 
     #[test]
     fn test_token_generation_with_thread_local_rng() {
-        let mut token_generator = FromThreadRng::new();
+        let token_generator = FromThreadRng::new();
         let token = token_generator.generate_token().unwrap();
         assert_eq!(token.chars().count(), 64);
     }
@@ -129,7 +149,7 @@ mod tests {
         failing_rng
             .expect_try_fill_bytes()
             .return_once(move |_| Err(err));
-        let mut token_generator = FromCustomRng::new(failing_rng);
+        let token_generator = FromCustomRng::new(failing_rng);
         let _ = token_generator.generate_token().unwrap();
     }
 

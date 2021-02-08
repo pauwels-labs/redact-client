@@ -739,7 +739,7 @@ mod tests {
                     .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
                         let mut expected_value = HashMap::new();
                         expected_value.insert("path".to_string(), ".testKey.".to_string());
-                        expected_value.insert("data".to_owned(), "testValue2".to_owned());
+                        expected_value.insert("data".to_owned(), "testValue1".to_owned());
                         expected_value.insert("data_type".to_owned(), "string".to_owned());
                         template.value == expected_value
                     })
@@ -757,8 +757,13 @@ mod tests {
                 fetch_cacher.expect_get_collection_size().times(1).returning(|| 3);
                 fetch_cacher
                     .expect_set()
+                    .withf(move |_fetch_id: &str, page_number: &i64, value: &Vec<Data>, _ttl: &usize| {
+                        *page_number == 1
+                            && value.len() == 2
+                            && value[0].value == "testValue0"
+                            && value[1].value == "testValue1"
+                    })
                     .times(1)
-                    // TODO: add argument matchers
                     .returning(|_,_,_,_| Ok(()));
 
                 let mut storer = MockStorer::new();
@@ -776,7 +781,7 @@ mod tests {
                                 Data {
                                     data_type: "string".to_owned(),
                                     path: ".testKey.".to_owned(),
-                                    value: json!("testValue2"),
+                                    value: json!("testValue1"),
                                 }
                             ]
                         })

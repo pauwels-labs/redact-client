@@ -1,5 +1,6 @@
 use handlebars::{Handlebars, RenderError as HandlebarsRenderError, TemplateFileError};
 use serde::Serialize;
+use std::ops::Deref;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 use warp::{reject::Reject, Reply};
@@ -53,6 +54,18 @@ pub trait Renderer: Clone + Send + Sync {
     ) -> Result<String, RenderError>;
 }
 
+impl<U> Renderer for Arc<U>
+where
+    U: Renderer,
+{
+    fn render<T: Serialize + Send>(
+        &self,
+        template: RenderTemplate<T>,
+    ) -> Result<String, RenderError> {
+        self.deref().render(template)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct HandlebarsRenderer<'reg> {
     hbs: Arc<Handlebars<'reg>>,
@@ -78,5 +91,39 @@ impl<'reg> Renderer for HandlebarsRenderer<'reg> {
         self.hbs
             .render(template.name, &template.value)
             .map_err(|source| RenderError::RenderError { source })
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::{RenderError, RenderTemplate, Renderer};
+    use mockall::predicate::*;
+    use mockall::*;
+    use serde::Serialize;
+    use std::collections::HashMap;
+
+    mock! {
+    pub Renderer {
+            pub fn render(&self, template: RenderTemplate<HashMap<String, String>>) -> Result<String, RenderError>;
+    }
+    impl Clone for Renderer {
+            fn clone(&self) -> Self;
+    }
+    }
+
+    impl Renderer for MockRenderer {
+        fn render<T: Serialize + Send>(
+            &self,
+            template: RenderTemplate<T>,
+        ) -> Result<String, RenderError> {
+            let value_str = serde_json::to_string(&template.value).unwrap();
+            let value_hm: HashMap<String, String> = serde_json::from_str(&value_str).unwrap();
+
+            let typed_template = RenderTemplate {
+                name: template.name,
+                value: value_hm,
+            };
+            self.render(typed_template)
+        }
     }
 }

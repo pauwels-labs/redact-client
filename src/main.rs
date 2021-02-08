@@ -116,8 +116,7 @@ async fn main() {
             session_store.clone(),
             render_engine.clone(),
             token_generator.clone(),
-        )
-        ),
+        )),
     );
 
     // Start the server

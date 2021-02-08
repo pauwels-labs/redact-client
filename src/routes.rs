@@ -409,7 +409,6 @@ pub mod data {
 
                                             match redis_client.exists_index(fetch_id, index).await.unwrap() {
                                                 true => {
-                                                    println!("in cache");
                                                     let (value, data_type): (String, String) = redis_client.get_index(fetch_id, index).await.map_or_else(
                                                         |_e| ("".to_string(), "string".to_string()),
                                                         | data| {
@@ -428,6 +427,7 @@ pub mod data {
                                                 false => {
                                                     let page_size = redis_client.get_collection_size();
                                                     let page_number = index / i64::from(page_size);
+
                                                     let (value, data_type): (String, String) =
                                                         match data_store.get_collection(&path_params.path, page_number * i64::from(page_size)).await {
                                                             Ok(data) => {
@@ -436,7 +436,6 @@ pub mod data {
                                                                     Err(err) => eprintln!("Error: {:?}", err)
                                                                 }
 
-                                                                println!("{}", data.results.len());
                                                                 let page_index = (index % i64::from(page_size)) as usize;
                                                                 match page_index >= data.results.len() {
                                                                     true => ("".to_string(), "string".to_string()),
@@ -582,7 +581,7 @@ mod tests {
         mod with_token {
             use crate::render::{tests::MockRenderer, RenderTemplate};
             use crate::routes::data::get;
-            use crate::storage::{tests::MockStorer, Data};
+            use crate::storage::{tests::MockStorer, Data, DataCollection};
             use crate::token::tests::MockTokenGenerator;
             use crate::redis_client::tests::MockFetchCacher;
             use async_trait::async_trait;
@@ -716,6 +715,118 @@ mod tests {
                 let res = warp::test::request()
                     .method("POST")
                     .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C")
+                    .header("cookie", "sid=testSID")
+                    .reply(&with_token_filter)
+                    .await;
+                assert_eq!(res.status(), 200);
+            }
+
+            #[tokio::test]
+            async fn with_token_collection_not_cached() {
+                let mut session = Session::new();
+                session.set_cookie_value("testSID".to_owned());
+                session.insert("token","TOKEN").unwrap();
+
+                let mut mock_store = MockSessionStore::new();
+                mock_store.expect_load_session().return_once(move |_| Ok(Some(session)));
+                mock_store.expect_destroy_session().return_once(move |_| Ok(()));
+
+                let session_store = ArcSessionStore(Arc::new(mock_store));
+
+                let mut render_engine = MockRenderer::new();
+                render_engine.expect_render().return_once(move |_| Ok("".to_string()));
+
+                let mut token_generator = MockTokenGenerator::new();
+                token_generator.expect_generate_token().returning(|| Ok("".to_owned()));
+
+                let mut fetch_cacher = MockFetchCacher::new();
+                fetch_cacher.expect_exists_index().times(1).returning(|_, _| Ok(false));
+                fetch_cacher.expect_get_collection_size().times(1).returning(|| 10);
+                fetch_cacher
+                    .expect_set()
+                    .times(1)
+                    // TODO: add argument matchers
+                    .returning(|_,_,_,_| Ok(()));
+
+                let mut storer = MockStorer::new();
+                storer
+                    .expect_get_collection()
+                    .times(1)
+                    .returning(|_, _| {
+                        Ok(DataCollection {
+                            results: vec![
+                                Data {
+                                    data_type: "string".to_owned(),
+                                    path: ".testKey.".to_owned(),
+                                    value: json!("testValue"),
+                                }
+                            ]
+                        })
+                    });
+
+                let with_token_filter = get::with_token(
+                    session_store,
+                    Arc::new(render_engine),
+                    Arc::new(token_generator),
+                    Arc::new(storer),
+                    Arc::new(fetch_cacher),
+                );
+
+                let res = warp::test::request()
+                    .method("POST")
+                    .path("/data/.testKey./TOKEN?index=0&fetch_id=abc")
+                    .header("cookie", "sid=testSID")
+                    .reply(&with_token_filter)
+                    .await;
+                assert_eq!(res.status(), 200);
+            }
+
+            #[tokio::test]
+            async fn with_token_collection_cached() {
+                let mut session = Session::new();
+                session.set_cookie_value("testSID".to_owned());
+                session.insert("token","TOKEN").unwrap();
+
+                let mut mock_store = MockSessionStore::new();
+                mock_store.expect_load_session().return_once(move |_| Ok(Some(session)));
+                mock_store.expect_destroy_session().return_once(move |_| Ok(()));
+
+                let session_store = ArcSessionStore(Arc::new(mock_store));
+
+                let mut render_engine = MockRenderer::new();
+                render_engine.expect_render().return_once(move |_| Ok("".to_string()));
+
+                let mut token_generator = MockTokenGenerator::new();
+                token_generator.expect_generate_token().returning(|| Ok("".to_owned()));
+
+                let mut fetch_cacher = MockFetchCacher::new();
+                fetch_cacher.expect_exists_index().times(1).returning(|_, _| Ok(true));
+                fetch_cacher.expect_set().times(0);
+                fetch_cacher.expect_get_index()
+                    .times(1)
+                    .with(predicate::eq("abc"), predicate::eq(0))
+                    .returning(|_,_| {
+                        Ok(Data {
+                            data_type: "string".to_owned(),
+                            path: ".testKey.".to_owned(),
+                            value: json!("testValue"),
+                        })
+                    });
+
+                let mut storer = MockStorer::new();
+                storer.expect_get_collection().times(0);
+
+                let with_token_filter = get::with_token(
+                    session_store,
+                    Arc::new(render_engine),
+                    Arc::new(token_generator),
+                    Arc::new(storer),
+                    Arc::new(fetch_cacher),
+                );
+
+                let res = warp::test::request()
+                    .method("POST")
+                    .path("/data/.testKey./TOKEN?index=0&fetch_id=abc")
                     .header("cookie", "sid=testSID")
                     .reply(&with_token_filter)
                     .await;

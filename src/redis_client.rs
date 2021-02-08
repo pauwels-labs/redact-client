@@ -4,6 +4,8 @@ use mobc_redis::{redis, RedisConnectionManager};
 use std::time::Duration;
 use thiserror::Error;
 use mobc_redis::redis::{RedisError, AsyncCommands};
+use std::sync::Arc;
+use std::ops::Deref;
 use crate::storage::Data;
 
 pub type MobcPool = Pool<RedisConnectionManager>;
@@ -109,3 +111,54 @@ impl FetchCacher for RedisClient {
     }
 }
 
+#[async_trait]
+impl<U> FetchCacher for Arc<U>
+where
+    U: FetchCacher,
+{
+    async fn set(
+        &self,
+        fetch_id: &str,
+        index: i64,
+        value: &Vec<Data>,
+        ttl_seconds: usize
+    ) -> Result<(), RedisClientError> {
+        self.deref().set(fetch_id, index, value, ttl_seconds).await
+    }
+
+    async fn get_index(&self, key: &str, index: i64) -> Result<Data, RedisClientError> {
+        self.deref().get_index(key, index).await
+    }
+
+    async fn exists_index(&self, key: &str, index: i64) -> Result<bool, RedisClientError> {
+        self.deref().exists_index(key, index).await
+    }
+
+    fn get_collection_size(&self) -> u8 {
+        self.deref().get_collection_size()
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::{FetchCacher, RedisClientError};
+    use crate::storage::Data;
+    use async_trait::async_trait;
+    use mockall::predicate::*;
+    use mockall::*;
+
+    mock! {
+        pub FetchCacher {}
+        impl Clone for FetchCacher {
+                fn clone(&self) -> Self;
+        }
+
+        #[async_trait]
+        impl FetchCacher for FetchCacher {
+            async fn set(&self, fetch_id: &str, index: i64, value: &Vec<Data>, ttl_seconds: usize) -> Result<(), RedisClientError>;
+            async fn get_index(&self, key: &str, index: i64) -> Result<Data, RedisClientError>;
+            async fn exists_index(&self, key: &str, index: i64) -> Result<bool, RedisClientError>;
+            fn get_collection_size(&self) -> u8;
+        }
+    }
+}

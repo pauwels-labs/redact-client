@@ -584,6 +584,7 @@ mod tests {
             use crate::routes::data::get;
             use crate::storage::{tests::MockStorer, Data};
             use crate::token::tests::MockTokenGenerator;
+            use crate::redis_client::tests::MockFetchCacher;
             use async_trait::async_trait;
             use mockall::predicate::*;
             use mockall::*;
@@ -699,12 +700,17 @@ mod tests {
                         })
                     });
 
+                let mut fetch_cacher = MockFetchCacher::new();
+                fetch_cacher
+                    .expect_exists_index()
+                    .times(0);
+
                 let with_token_filter = get::with_token(
                     session_store,
                     Arc::new(render_engine),
                     Arc::new(token_generator),
                     Arc::new(storer),
-                    Arc::new(storer),
+                    Arc::new(fetch_cacher),
                 );
 
                 let res = warp::test::request()

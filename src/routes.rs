@@ -734,14 +734,27 @@ mod tests {
                 let session_store = ArcSessionStore(Arc::new(mock_store));
 
                 let mut render_engine = MockRenderer::new();
-                render_engine.expect_render().return_once(move |_| Ok("".to_string()));
+                render_engine
+                    .expect_render()
+                    .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
+                        let mut expected_value = HashMap::new();
+                        expected_value.insert("path".to_string(), ".testKey.".to_string());
+                        expected_value.insert("data".to_owned(), "testValue2".to_owned());
+                        expected_value.insert("data_type".to_owned(), "string".to_owned());
+                        template.value == expected_value
+                    })
+                    .times(1)
+                    .return_once(move |_| Ok("".to_string()));
 
                 let mut token_generator = MockTokenGenerator::new();
                 token_generator.expect_generate_token().returning(|| Ok("".to_owned()));
 
                 let mut fetch_cacher = MockFetchCacher::new();
-                fetch_cacher.expect_exists_index().times(1).returning(|_, _| Ok(false));
-                fetch_cacher.expect_get_collection_size().times(1).returning(|| 10);
+                fetch_cacher.expect_exists_index()
+                    .times(1)
+                    .with(predicate::eq("abc"), predicate::eq(4))
+                    .returning(|_, _| Ok(false));
+                fetch_cacher.expect_get_collection_size().times(1).returning(|| 3);
                 fetch_cacher
                     .expect_set()
                     .times(1)
@@ -758,7 +771,12 @@ mod tests {
                                 Data {
                                     data_type: "string".to_owned(),
                                     path: ".testKey.".to_owned(),
-                                    value: json!("testValue"),
+                                    value: json!("testValue0"),
+                                },
+                                Data {
+                                    data_type: "string".to_owned(),
+                                    path: ".testKey.".to_owned(),
+                                    value: json!("testValue2"),
                                 }
                             ]
                         })
@@ -773,8 +791,8 @@ mod tests {
                 );
 
                 let res = warp::test::request()
-                    .method("POST")
-                    .path("/data/.testKey./TOKEN?index=0&fetch_id=abc")
+                    .method("GET")
+                    .path("/data/.testKey./TOKEN?index=4&fetch_id=abc")
                     .header("cookie", "sid=testSID")
                     .reply(&with_token_filter)
                     .await;
@@ -794,7 +812,17 @@ mod tests {
                 let session_store = ArcSessionStore(Arc::new(mock_store));
 
                 let mut render_engine = MockRenderer::new();
-                render_engine.expect_render().return_once(move |_| Ok("".to_string()));
+                render_engine
+                    .expect_render()
+                    .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
+                        let mut expected_value = HashMap::new();
+                        expected_value.insert("path".to_string(), ".testKey.".to_string());
+                        expected_value.insert("data".to_owned(), "testValue".to_owned());
+                        expected_value.insert("data_type".to_owned(), "string".to_owned());
+                        template.value == expected_value
+                    })
+                    .times(1)
+                    .return_once(move |_| Ok("".to_string()));
 
                 let mut token_generator = MockTokenGenerator::new();
                 token_generator.expect_generate_token().returning(|| Ok("".to_owned()));
@@ -825,7 +853,7 @@ mod tests {
                 );
 
                 let res = warp::test::request()
-                    .method("POST")
+                    .method("GET")
                     .path("/data/.testKey./TOKEN?index=0&fetch_id=abc")
                     .header("cookie", "sid=testSID")
                     .reply(&with_token_filter)

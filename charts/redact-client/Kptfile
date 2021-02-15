@@ -1,0 +1,11 @@
+apiVersion: kpt.dev/v1alpha1
+kind: Kptfile
+metadata:
+  name: charts
+upstream:
+  type: git
+  git:
+    commit: e9aa5517b855c5e3cdf7b06b03c6fda4b36f04b9
+    repo: https://github.com/jenkins-x/jx3-gitops-template
+    directory: /charts/charts
+    ref: master

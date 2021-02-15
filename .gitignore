@@ -1,5 +1,7 @@
+# Build output
 /target
-key
+
+# .env files are used to locally store secrets
 *.env
 
 # don't include the cov report

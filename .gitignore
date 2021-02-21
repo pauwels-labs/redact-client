@@ -1,6 +1,7 @@
 /target
 key
 *.env
+.idea/
 
 # don't include the cov report
 tarpaulin-report.html

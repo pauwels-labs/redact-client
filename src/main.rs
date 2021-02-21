@@ -1,8 +1,9 @@
 mod render;
 mod routes;
 mod storage;
+mod redis_service;
+mod fetch_cache;
 pub mod token;
-mod redis_client;
 
 use render::HandlebarsRenderer;
 use rust_config::Configurator;
@@ -12,8 +13,9 @@ use storage::RedactStorer;
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
-use redis_client::RedisClient;
 use std::convert::TryFrom;
+use fetch_cache::FetchCache;
+use crate::redis_service::{RedisServicer, RedisService};
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -89,9 +91,9 @@ async fn main() {
     // Create an in-memory session store
     let session_store = MemoryStore::new();
 
-    // Connect to redis pool
+    // Connect to redis_service pool
     let redis_connection_string = config.get_str("redis.conn").unwrap();
-    let redis_connection = RedisClient::new(&redis_connection_string, collection_page_size).unwrap();
+    let mut redis_connection: FetchCache<RedisService> = FetchCache::new(&redis_connection_string, collection_page_size).unwrap();
 
     // Create a token generator
     let token_generator = FromThreadRng::new();

@@ -183,7 +183,7 @@ pub mod data {
         use warp_sessions::{
             self, CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
         };
-        use crate::redis_client::FetchCacher;
+        use crate::fetch_cache::FetchCacher;
 
         #[derive(Deserialize, Serialize)]
         struct WithoutTokenQueryParams {
@@ -310,7 +310,7 @@ pub mod data {
             render_engine: R,
             token_generator: T,
             data_store: D,
-            redis_client: F,
+            fetch_cache: F,
         ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
             warp::any()
                 .and(
@@ -334,7 +334,7 @@ pub mod data {
                 .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
                 .and(warp::any().map(move || render_engine.clone()))
                 .and(warp::any().map(move || data_store.clone()))
-                .and(warp::any().map(move || redis_client.clone()))
+                .and(warp::any().map(move || fetch_cache.clone()))
                 .and_then(
                     move |path_params: WithTokenPathParams,
                           query_params: WithTokenQueryParams,
@@ -342,7 +342,7 @@ pub mod data {
                           token: String,
                           render_engine: R,
                           data_store: D,
-                          redis_client: F | async move {
+                          mut fetch_cache: F | async move {
                         let mut template_values = HashMap::new();
                         match &query_params.css {
                             Some(css) => template_values.insert("css".to_string(), css.to_owned()),
@@ -407,9 +407,9 @@ pub mod data {
                                         // Collection request
                                         (Some(fetch_id), Some(index)) => {
 
-                                            match redis_client.exists_index(fetch_id, index).await.unwrap() {
+                                            match fetch_cache.exists_index(fetch_id, index).await.unwrap() {
                                                 true => {
-                                                    let (value, data_type): (String, String) = redis_client.get_index(fetch_id, index).await.map_or_else(
+                                                    let (value, data_type): (String, String) = fetch_cache.get_index(fetch_id, index).await.map_or_else(
                                                         |_e| ("".to_string(), "string".to_string()),
                                                         | data| {
                                                             let val_str = match data.value.as_str() {
@@ -425,13 +425,13 @@ pub mod data {
                                                     template_values.insert("data_type".to_string(), data_type);
                                                 },
                                                 false => {
-                                                    let page_size = redis_client.get_collection_size();
+                                                    let page_size = fetch_cache.get_collection_size();
                                                     let page_number = index / i64::from(page_size);
 
                                                     let (value, data_type): (String, String) =
                                                         match data_store.get_collection(&path_params.path, page_number * i64::from(page_size)).await {
                                                             Ok(data) => {
-                                                                match redis_client.set(fetch_id, page_number,&data.results.clone(), 60).await {
+                                                                match fetch_cache.set(fetch_id, page_number,&data.results.clone(), 60).await {
                                                                     Ok(()) => { },
                                                                     Err(err) => eprintln!("Error: {:?}", err)
                                                                 }
@@ -583,7 +583,7 @@ mod tests {
             use crate::routes::data::get;
             use crate::storage::{tests::MockStorer, Data, DataCollection};
             use crate::token::tests::MockTokenGenerator;
-            use crate::redis_client::tests::MockFetchCacher;
+            use crate::fetch_cache::tests::MockFetchCacher;
             use async_trait::async_trait;
             use mockall::predicate::*;
             use mockall::*;

@@ -34,10 +34,7 @@ pub enum RedisServiceError {
     ConnectionError { source: mobc_redis::redis::RedisError },
 
     #[error("Failed to get a redis_service connection from the connection pool")]
-    RedisPoolError { source: mobc::Error<RedisError> },
-
-    #[error("Item not found")]
-    ItemNotFound { },
+    RedisPoolError { source: mobc::Error<RedisError> }
 }
 
 impl RedisService {
@@ -89,10 +86,7 @@ impl<U> RedisServicer for Arc<U>
     where
         U: RedisServicer,
 {
-    async fn set(&self,
-                 key: &str,
-                 value: &str
-    ) -> Result<(), RedisServiceError> {
+    async fn set(&self, key: &str, value: &str) -> Result<(), RedisServiceError> {
         self.deref().set(key, value).await
     }
 
@@ -111,13 +105,10 @@ impl<U> RedisServicer for Arc<U>
 
 #[cfg(test)]
 pub mod tests {
-    use super::{RedisService, RedisServicer, RedisServiceError};
+    use super::{RedisServicer, RedisServiceError};
     use async_trait::async_trait;
     use mockall::predicate::*;
     use mockall::*;
-    use mobc_redis::RedisConnectionManager;
-    use mobc::{Connection, Pool, Manager};
-    use redis::{AsyncCommands, RedisFuture, FromRedisValue, ToRedisArgs};
 
     mock! {
         pub RedisServicer {}
@@ -127,13 +118,10 @@ pub mod tests {
 
         #[async_trait]
         impl RedisServicer for RedisServicer {
-            async fn set(&self,
-                key: &str,
-                value: String,
-                ttl_seconds: usize
-            ) -> Result<(), RedisClientError>;
-            async fn get(&self, key: &str) -> Result<String, RedisClientError>;
-            async fn exists(&self, key: &str) -> Result<bool, RedisClientError>;
+            async fn set(&self, key: &str, value: &str) -> Result<(), RedisServiceError>;
+            async fn get(&self, key: &str) -> Result<String, RedisServiceError>;
+            async fn exists(&self, key: &str) -> Result<bool, RedisServiceError>;
+            async fn expire(&self, key: &str, seconds: usize) -> Result<bool, RedisServiceError>;
         }
     }
 }

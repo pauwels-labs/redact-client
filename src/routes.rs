@@ -342,7 +342,7 @@ pub mod data {
                           token: String,
                           render_engine: R,
                           data_store: D,
-                          mut fetch_cache: F | async move {
+                          fetch_cache: F | async move {
                         let mut template_values = HashMap::new();
                         match &query_params.css {
                             Some(css) => template_values.insert("css".to_string(), css.to_owned()),

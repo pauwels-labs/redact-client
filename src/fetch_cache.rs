@@ -1,19 +1,14 @@
 use async_trait::async_trait;
-use mobc::{Connection, Pool};
-use mobc_redis::{redis, RedisConnectionManager};
-use std::time::Duration;
 use thiserror::Error;
-use mobc_redis::redis::{RedisError, AsyncCommands};
 use std::sync::Arc;
 use std::ops::Deref;
-use std::ops::DerefMut;
 use crate::storage::Data;
 use crate::redis_service;
 use crate::redis_service::{RedisServiceError, RedisService};
 
 #[async_trait]
 pub trait FetchCacher: Clone + Send + Sync {
-    async fn set(&mut self, fetch_id: &str, page_number: i64, value: &Vec<Data>, ttl_seconds: usize) -> Result<(), RedisClientError>;
+    async fn set(&self, fetch_id: &str, page_number: i64, value: &Vec<Data>, ttl_seconds: usize) -> Result<(), RedisClientError>;
     async fn get_index(&self, key: &str, index: i64) -> Result<Data, RedisClientError>;
     async fn exists_index(&self, key: &str, index: i64) -> Result<bool, RedisClientError>;
     fn get_collection_size(&self) -> u8;
@@ -29,9 +24,6 @@ pub struct FetchCache<T: redis_service::RedisServicer> {
 pub enum RedisClientError {
     #[error("Failed to connect to Redis")]
     ConnectionError { source: RedisServiceError },
-
-    #[error("Failed to get a redis_service connection from the connection pool")]
-    RedisPoolError { source: mobc::Error<RedisServiceError> },
 
     #[error("Failed to serialize collection")]
     SerializationError { source: serde_json::Error },
@@ -52,7 +44,7 @@ impl FetchCache<RedisService> {
 
 #[async_trait]
 impl<T: redis_service::RedisServicer> FetchCacher for FetchCache<T> {
-    async fn set(&mut self, fetch_id: &str, page_number: i64, value: &Vec<Data>, ttl_seconds: usize) -> Result<(), RedisClientError> {
+    async fn set(&self, fetch_id: &str, page_number: i64, value: &Vec<Data>, ttl_seconds: usize) -> Result<(), RedisClientError> {
         let serialized_collection = serde_json::to_string(value).map_err(|source| RedisClientError::SerializationError { source })?;
         let cache_key =  format!("fetch_id::{}::start_index::{}", fetch_id, page_number*i64::from(self.collection_page_size));
 
@@ -89,44 +81,43 @@ impl<T: redis_service::RedisServicer> FetchCacher for FetchCache<T> {
     }
 }
 
-// #[async_trait]
-// impl<U> FetchCacher for Arc<U>
-//     where
-//         U: FetchCacher,
-// {
-//     async fn set(
-//         &mut self,
-//         fetch_id: &str,
-//         page_number: i64,
-//         value: &Vec<Data>,
-//         ttl_seconds: usize
-//     ) -> Result<(), RedisClientError> {
-//         self.deref_mut().set(fetch_id, page_number, value, ttl_seconds).await
-//     }
-//
-//     async fn get_index(&self, key: &str, index: i64) -> Result<Data, RedisClientError> {
-//         self.deref().get_index(key, index).await
-//     }
-//
-//     async fn exists_index(&self, key: &str, index: i64) -> Result<bool, RedisClientError> {
-//         self.deref().exists_index(key, index).await
-//     }
-//
-//     fn get_collection_size(&self) -> u8 {
-//         self.deref().get_collection_size()
-//     }
-// }
+#[async_trait]
+impl<U> FetchCacher for Arc<U>
+    where
+        U: FetchCacher,
+{
+    async fn set(
+        &self,
+        fetch_id: &str,
+        page_number: i64,
+        value: &Vec<Data>,
+        ttl_seconds: usize
+    ) -> Result<(), RedisClientError> {
+        self.deref().set(fetch_id, page_number, value, ttl_seconds).await
+    }
+
+    async fn get_index(&self, key: &str, index: i64) -> Result<Data, RedisClientError> {
+        self.deref().get_index(key, index).await
+    }
+
+    async fn exists_index(&self, key: &str, index: i64) -> Result<bool, RedisClientError> {
+        self.deref().exists_index(key, index).await
+    }
+
+    fn get_collection_size(&self) -> u8 {
+        self.deref().get_collection_size()
+    }
+}
 
 #[cfg(test)]
 pub mod tests {
-    use super::{RedisClient, FetchCacher, RedisClientError};
+    use super::{FetchCacher, FetchCache, RedisClientError};
     use crate::storage::Data;
+    use crate::redis_service::tests::MockRedisServicer;
     use async_trait::async_trait;
     use mockall::predicate::*;
     use mockall::*;
-    use mobc_redis::RedisConnectionManager;
-    use mobc::{Connection, Pool, Manager};
-    use redis::{AsyncCommands, RedisFuture, FromRedisValue, ToRedisArgs};
+    use serde_json::json;
 
     mock! {
         pub FetchCacher {}
@@ -141,5 +132,36 @@ pub mod tests {
             async fn exists_index(&self, key: &str, index: i64) -> Result<bool, RedisClientError>;
             fn get_collection_size(&self) -> u8;
         }
+    }
+
+    #[test]
+    fn test_token_generation_with_deterministic_rng() {
+        let data_collection = vec![
+            Data {
+                data_type: "string".to_owned(),
+                path: ".testKey.".to_owned(),
+                value: json!("testValue"),
+            }
+        ];
+        let fetch_id = "fetch_id";
+        let page_number = 0;
+        let cache_key = format!("fetch_id::{}::start_index::{}", fetch_id, page_number);
+        let serialized_value = serde_json::to_string(&data_collection).unwrap();
+
+        let mut redis_service = MockRedisServicer::new();
+        redis_service
+            .expect_set()
+            .with(
+                predicate::eq(cache_key),
+                predicate::eq(serialized_value))
+            .times(1)
+            .return_once(move |_, _| Ok(()));
+
+        let fetch_cache = FetchCache {
+            redis_service: MockRedisServicer::new(),
+            collection_page_size: 10,
+        };
+
+        fetch_cache.set("fetch_id", 0, &data_collection, 0);
     }
 }

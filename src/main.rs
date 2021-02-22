@@ -15,7 +15,7 @@ use warp::Filter;
 use warp_sessions::MemoryStore;
 use std::convert::TryFrom;
 use fetch_cache::FetchCache;
-use crate::redis_service::{RedisServicer, RedisService};
+use crate::redis_service::RedisService;
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -93,7 +93,7 @@ async fn main() {
 
     // Connect to redis_service pool
     let redis_connection_string = config.get_str("redis.conn").unwrap();
-    let mut redis_connection: FetchCache<RedisService> = FetchCache::new(&redis_connection_string, collection_page_size).unwrap();
+    let redis_connection: FetchCache<RedisService> = FetchCache::new(&redis_connection_string, collection_page_size).unwrap();
 
     // Create a token generator
     let token_generator = FromThreadRng::new();

@@ -52,8 +52,14 @@ spec:
           resources: {}
         - name: promote-helm-release
           resources: {}
-        - name: promote-jx-promote
+        - image: ghcr.io/jenkins-x/jx-promote:0.0.242
+          name: promote-jx-promote
           resources: {}
+          script: |
+            #!/usr/bin/env sh
+            source .jx/variables.sh
+            cd charts/$APP_NAME
+            jx promote -b --all --timeout 1h --no-poll
         volumes:
         - name: coveralls-repo-tokens
           secret:

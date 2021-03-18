@@ -4,7 +4,7 @@ FROM xd009642/tarpaulin
 # This build-arg will be used by cargo-tarpaulin to upload code coverage reports to coveralls
 ARG REPO_TOKEN
 
-# Perform apk actions as root
+# Perform apt actions as root
 RUN apt install libssl-dev
 
 # Create build directory as root

@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 tokio = { version = "1.0.2", features = ["macros", "rt-multi-thread"] }
 warp = "0.3.0"
-rust-config = { git = "https://github.com/ajpauwels/rust-config.git" }
+rust-config = { git = "https://github.com/ajpauwels/rust-config.git", rev = "f5d30659eba5cbcf57941414ddc79a19dfcf1110" }
 serde = { version = "1.0.120", features = ["derive"] }
 serde_json = "1.0.61"
 futures = "0.3.12"

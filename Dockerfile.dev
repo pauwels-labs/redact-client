@@ -1,4 +1,4 @@
-FROM rust:1.50.0-alpine3.12 AS builder
+FROM rust:1.50.0-alpine3.13 AS builder
 
 # Create an unprivileged user
 RUN adduser --disabled-password --no-create-home --uid 1000 service service
@@ -24,7 +24,7 @@ RUN cargo build --release
 
 # Create alpine debug image
 # This should be scratch in prod
-FROM alpine:3.12
+FROM alpine:3.13
 
 # IMPORTANT: The following COPY and USER instructions are commented out in
 #            development images to allow the binary's runtime user to be

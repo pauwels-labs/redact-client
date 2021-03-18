@@ -58,6 +58,7 @@ spec:
           script: |
             #!/usr/bin/env sh
             source .jx/variables.sh
+            sleep 999999
             cd charts/$APP_NAME
             jx promote -b --all --timeout 1h --no-poll
         volumes:

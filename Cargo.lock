@@ -1617,7 +1617,7 @@ dependencies = [
 [[package]]
 name = "rust-config"
 version = "0.1.0"
-source = "git+https://github.com/ajpauwels/rust-config.git#e059fde028f94684de11f4f6ecde8876369c3449"
+source = "git+https://github.com/ajpauwels/rust-config.git?rev=f5d30659eba5cbcf57941414ddc79a19dfcf1110#f5d30659eba5cbcf57941414ddc79a19dfcf1110"
 dependencies = [
  "config",
  "serde 1.0.123",

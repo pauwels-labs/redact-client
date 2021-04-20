@@ -58,9 +58,10 @@ pub mod data {
                           token: String,
                           render_engine: R,
                           data_store: D| async move {
-                        let data_str = match body_params.data.as_str() {
-                            Some(s) => s,
-                            None => "",
+                        let data_str = if let Some(s) = body_params.data.as_str() {
+                            s
+                        } else {
+                            ""
                         };
 
                         let mut template_values = HashMap::new();
@@ -205,7 +206,7 @@ pub mod data {
             fetch_id: Option<String>,
         }
 
-        #[derive(Deserialize, Serialize)]
+        #[derive(Deserialize, Serialize, Debug)]
         struct WithTokenPathParams {
             path: String,
             token: String,

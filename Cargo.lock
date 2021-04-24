@@ -956,6 +956,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89203f3fba0a3795506acaad8ebce3c80c0af93f994d5a1d7a0b1eeb23271929"
 
 [[package]]
+name = "libsodium-sys"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a685b64f837b339074115f2e7f7b431ac73681d08d75b389db7498b8892b8a58"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+]
+
+[[package]]
 name = "linked-hash-map"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1536,6 +1547,7 @@ dependencies = [
  "serde 1.0.123",
  "serde_json",
  "sha2",
+ "sodiumoxide",
  "thiserror",
  "tokio",
  "uuid",
@@ -1804,6 +1816,17 @@ dependencies = [
  "cfg-if 1.0.0",
  "libc",
  "winapi",
+]
+
+[[package]]
+name = "sodiumoxide"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7038b67c941e23501573cb7242ffb08709abe9b11eb74bceff875bbda024a6a8"
+dependencies = [
+ "libc",
+ "libsodium-sys",
+ "serde 1.0.123",
 ]
 
 [[package]]

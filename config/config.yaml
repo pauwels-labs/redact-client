@@ -1,2 +1,6 @@
 storage:
   url: http://localhost:8081
+crypto:
+  keys:
+    publicpath: ./keys/public
+    privatepath: ./keys/private

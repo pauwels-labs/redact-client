@@ -52,7 +52,8 @@ async fn main() {
     // Find or generate secret keys
     let public_keys_path = config.get_str("crypto.keys.publicpath").unwrap();
     let private_keys_path = config.get_str("crypto.keys.privatepath").unwrap();
-    let filter_result = file_io::filter_dir(&public_keys_path, 1, 1, Some(&"pub")).unwrap();
+    let filter = file_io::FsFilterer::new();
+    let filter_result = filter.dir(&public_keys_path, 1, 1, Some(&"pub")).unwrap();
     filter_result.paths.iter().for_each(|entry| {
         println!("{}", entry);
     });

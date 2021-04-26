@@ -13,6 +13,23 @@ use std::{boxed::Box, fs, io, iter::Iterator, path};
  * If a pass through function does not exist for the method you need, simply add it to
  * the trait and add a pass-through implementation.
  */
+pub trait MetadataContainer {
+    fn is_file(&self) -> bool;
+    fn is_dir(&self) -> bool;
+}
+
+pub struct Metadata(fs::Metadata);
+
+impl MetadataContainer for Metadata {
+    fn is_file(&self) -> bool {
+        self.0.is_file()
+    }
+
+    fn is_dir(&self) -> bool {
+        self.0.is_dir()
+    }
+}
+
 pub trait DirEntryContainer {
     fn path(&self) -> path::PathBuf;
 }
@@ -47,6 +64,7 @@ impl ReadDirContainer for ReadDir {}
 
 pub trait FsReadWriter {
     fn read_dir(&self, path: &str) -> io::Result<Box<dyn ReadDirContainer>>;
+    fn metadata(&self, path: &path::Path) -> io::Result<Box<dyn MetadataContainer>>;
 }
 
 pub struct Fs {}
@@ -55,6 +73,13 @@ impl FsReadWriter for Fs {
     fn read_dir(&self, path: &str) -> io::Result<Box<dyn ReadDirContainer>> {
         match fs::read_dir(path) {
             Ok(rd) => io::Result::Ok(Box::new(ReadDir(rd))),
+            Err(e) => io::Result::Err(e),
+        }
+    }
+
+    fn metadata(&self, path: &path::Path) -> io::Result<Box<dyn MetadataContainer>> {
+        match fs::metadata(path) {
+            Ok(metadata) => io::Result::Ok(Box::new(Metadata(metadata))),
             Err(e) => io::Result::Err(e),
         }
     }
@@ -100,12 +125,19 @@ impl<FS: FsReadWriter> FsFilterer<FS> {
             })
             .filter_map(|entry| {
                 let path = entry.path();
-                match (fs::metadata(&path), path.file_stem(), path.extension()) {
-                    (Ok(metadata), Some(file_stem), Some(extension)) => {
+                match (self.fs_rw.metadata(&path), path.file_stem()) {
+                    (Ok(metadata), Some(file_stem)) => {
+                        let extension = path.extension();
                         let is_file = metadata.is_file() as u8;
                         let is_dir = (metadata.is_dir() as u8) << 1;
                         let extension_check = match extension_filter {
-                            Some(extension_filter) => extension_filter == extension,
+                            Some(extension_filter) => {
+                                if let Some(extension) = extension {
+                                    extension_filter == extension
+                                } else {
+                                    false
+                                }
+                            }
                             None => true,
                         };
                         let hidden_check = if file_stem.to_str().unwrap().starts_with('.') {
@@ -138,7 +170,7 @@ impl<FS: FsReadWriter> FsFilterer<FS> {
 
 #[cfg(test)]
 pub mod tests {
-    use super::{DirEntryContainer, FsFilterer, FsReadWriter, ReadDirContainer};
+    use super::{DirEntryContainer, FsFilterer, FsReadWriter, MetadataContainer, ReadDirContainer};
     use mockall::predicate::*;
     use mockall::*;
     use std::io;
@@ -147,6 +179,7 @@ pub mod tests {
     pub Fs {}
     impl FsReadWriter for Fs {
         fn read_dir(&self, path: &str) -> io::Result<Box<dyn ReadDirContainer>>;
+        fn metadata(&self, path: &std::path::Path) -> io::Result<Box<dyn MetadataContainer>>;
     }
     }
 
@@ -157,6 +190,21 @@ pub mod tests {
         fn next(&mut self) -> Option<io::Result<Box<dyn DirEntryContainer>>>;
     }
     impl ReadDirContainer for ReadDir {}
+    }
+
+    mock! {
+    pub DirEntry {}
+    impl DirEntryContainer for DirEntry {
+        fn path(&self) -> std::path::PathBuf;
+    }
+    }
+
+    mock! {
+    pub Metadata {}
+    impl MetadataContainer for Metadata {
+    fn is_file(&self) -> bool;
+    fn is_dir(&self) -> bool;
+    }
     }
 
     #[test]
@@ -173,5 +221,44 @@ pub mod tests {
         let filter = FsFilterer::new_custom(fs_rw);
         let filter_result = filter.dir("test/path", 1, 1, None).unwrap();
         assert!(filter_result.paths.is_empty());
+    }
+
+    #[test]
+    fn test_filter_dir_directories_are_returned() {
+        let mut mock_seq = Sequence::new();
+        let mut metadata = MockMetadata::new();
+        metadata.expect_is_file().times(1).returning(|| false);
+        metadata.expect_is_dir().times(1).returning(|| true);
+        let mut dir_entry = MockDirEntry::new();
+        dir_entry
+            .expect_path()
+            .times(1)
+            .returning(|| std::path::PathBuf::from("test/path/dir1"));
+        let mut read_dir = MockReadDir::new();
+        read_dir
+            .expect_next()
+            .times(1)
+            .in_sequence(&mut mock_seq)
+            .return_once(|| Some(io::Result::Ok(Box::new(dir_entry))));
+        read_dir
+            .expect_next()
+            .times(1)
+            .in_sequence(&mut mock_seq)
+            .returning(|| None);
+        let mut fs_rw = MockFs::new();
+        fs_rw
+            .expect_metadata()
+            .with(predicate::eq(std::path::Path::new("test/path/dir1")))
+            .times(1)
+            .return_once(move |_| io::Result::Ok(Box::new(metadata)));
+        fs_rw
+            .expect_read_dir()
+            .with(predicate::eq("test/path"))
+            .times(1)
+            .return_once(move |_| io::Result::Ok(Box::new(read_dir)));
+
+        let filter = FsFilterer::new_custom(fs_rw);
+        let filter_result = filter.dir("test/path", 2, 1, None).unwrap();
+        assert!(filter_result.paths.len() == 1);
     }
 }

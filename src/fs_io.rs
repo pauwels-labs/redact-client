@@ -1,5 +1,7 @@
 use std::{boxed::Box, fs, io, iter::Iterator, path};
 
+use path::{Path, PathBuf};
+
 /**
  * These traits and structs interface out our interactions with the fs package.
  * By using these abstractions, we can tightly control our access to the filesystem,
@@ -31,13 +33,13 @@ impl MetadataContainer for Metadata {
 }
 
 pub trait DirEntryContainer {
-    fn path(&self) -> path::PathBuf;
+    fn path(&self) -> PathBuf;
 }
 
 pub struct DirEntry(fs::DirEntry);
 
 impl DirEntryContainer for DirEntry {
-    fn path(&self) -> path::PathBuf {
+    fn path(&self) -> PathBuf {
         self.0.path()
     }
 }
@@ -64,7 +66,7 @@ impl ReadDirContainer for ReadDir {}
 
 pub trait FsReadWriter {
     fn read_dir(&self, path: &str) -> io::Result<Box<dyn ReadDirContainer>>;
-    fn metadata(&self, path: &path::Path) -> io::Result<Box<dyn MetadataContainer>>;
+    fn metadata(&self, path: &Path) -> io::Result<Box<dyn MetadataContainer>>;
 }
 
 pub struct Fs {}
@@ -77,7 +79,7 @@ impl FsReadWriter for Fs {
         }
     }
 
-    fn metadata(&self, path: &path::Path) -> io::Result<Box<dyn MetadataContainer>> {
+    fn metadata(&self, path: &Path) -> io::Result<Box<dyn MetadataContainer>> {
         match fs::metadata(path) {
             Ok(metadata) => io::Result::Ok(Box::new(Metadata(metadata))),
             Err(e) => io::Result::Err(e),

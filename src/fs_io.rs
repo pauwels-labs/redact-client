@@ -88,7 +88,7 @@ impl FsReadWriter for Fs {
 }
 
 pub struct FilterResult {
-    pub paths: Vec<String>,
+    pub paths: Vec<PathBuf>,
     pub io_errors: Vec<io::Error>,
 }
 
@@ -115,7 +115,7 @@ impl<FS: FsReadWriter> FsFilterer<FS> {
         extension_filter: Option<&str>,
     ) -> Result<FilterResult, io::Error> {
         let mut io_errors: Vec<io::Error> = Vec::new();
-        let paths: Vec<String> = self
+        let paths: Vec<PathBuf> = self
             .fs_rw
             .read_dir(path)?
             .filter_map(|entry| match entry {
@@ -153,11 +153,7 @@ impl<FS: FsReadWriter> FsFilterer<FS> {
                             && extension_check
                             && (hidden_check & hidden_filter) != 0
                         {
-                            if let Some(path_str) = path.to_str() {
-                                Some(path_str.to_owned())
-                            } else {
-                                None
-                            }
+                            Some(path)
                         } else {
                             None
                         }
@@ -296,7 +292,8 @@ pub mod tests {
         let filter_result = filter.dir("test/path", 2, 1, None).unwrap();
         assert!(
             filter_result.paths.len() == 1
-                && filter_result.paths.first().unwrap() == "test/path/dir1"
+                && filter_result.paths.first().unwrap()
+                    == &std::path::PathBuf::from("test/path/dir1")
         );
     }
 
@@ -369,7 +366,8 @@ pub mod tests {
         let filter_result = filter.dir("test/path", 1, 1, None).unwrap();
         assert!(
             filter_result.paths.len() == 1
-                && filter_result.paths.first().unwrap() == "test/path/file1"
+                && filter_result.paths.first().unwrap()
+                    == &std::path::PathBuf::from("test/path/file1")
         );
     }
 
@@ -442,7 +440,8 @@ pub mod tests {
         let filter_result = filter.dir("test/path", 2, 2, None).unwrap();
         assert!(
             filter_result.paths.len() == 1
-                && filter_result.paths.first().unwrap() == "test/path/.dir1"
+                && filter_result.paths.first().unwrap()
+                    == &std::path::PathBuf::from("test/path/.dir1")
         );
     }
 
@@ -515,7 +514,8 @@ pub mod tests {
         let filter_result = filter.dir("test/path", 1, 2, None).unwrap();
         assert!(
             filter_result.paths.len() == 1
-                && filter_result.paths.first().unwrap() == "test/path/.file2"
+                && filter_result.paths.first().unwrap()
+                    == &std::path::PathBuf::from("test/path/.file2")
         );
     }
 
@@ -602,8 +602,10 @@ pub mod tests {
         let filter_result = filter.dir("test/path", 2, 3, None).unwrap();
         assert!(
             filter_result.paths.len() == 2
-                && filter_result.paths.get(0).unwrap() == "test/path/dir1"
-                && filter_result.paths.get(1).unwrap() == "test/path/.dir2"
+                && filter_result.paths.get(0).unwrap()
+                    == &std::path::PathBuf::from("test/path/dir1")
+                && filter_result.paths.get(1).unwrap()
+                    == &std::path::PathBuf::from("test/path/.dir2")
         );
     }
 
@@ -690,8 +692,10 @@ pub mod tests {
         let filter_result = filter.dir("test/path", 1, 3, None).unwrap();
         assert!(
             filter_result.paths.len() == 2
-                && filter_result.paths.get(0).unwrap() == "test/path/file1"
-                && filter_result.paths.get(1).unwrap() == "test/path/.file2"
+                && filter_result.paths.get(0).unwrap()
+                    == &std::path::PathBuf::from("test/path/file1")
+                && filter_result.paths.get(1).unwrap()
+                    == &std::path::PathBuf::from("test/path/.file2")
         );
     }
 
@@ -796,8 +800,10 @@ pub mod tests {
         let filter_result = filter.dir("test/path", 3, 3, Some("yay")).unwrap();
         assert!(
             filter_result.paths.len() == 2
-                && filter_result.paths.get(0).unwrap() == "test/path/file1.yay"
-                && filter_result.paths.get(1).unwrap() == "test/path/dir2.yay"
+                && filter_result.paths.get(0).unwrap()
+                    == &std::path::PathBuf::from("test/path/file1.yay")
+                && filter_result.paths.get(1).unwrap()
+                    == &std::path::PathBuf::from("test/path/dir2.yay")
         );
     }
 }

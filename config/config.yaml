@@ -2,5 +2,6 @@ storage:
   url: http://localhost:8081
 crypto:
   keys:
+    defaultkeyname: admin
     publicpath: ./keys/public
     privatepath: ./keys/private

@@ -1,8 +1,8 @@
-use serde_json::Value;
 use sodiumoxide::crypto;
+use std::{convert::TryInto, vec::Vec};
 
 pub trait KeypairGenerator {
-    fn create() -> Result<(Value, Value), serde_json::Error>;
+    fn create() -> Result<([u8; 64], [u8; 64]), serde_json::Error>;
 }
 
 pub struct SodiumOxideKeypairGenerator {}
@@ -19,10 +19,24 @@ impl SodiumOxideKeypairGenerator {
 }
 
 impl KeypairGenerator for SodiumOxideKeypairGenerator {
-    fn create() -> Result<(Value, Value), serde_json::Error> {
+    fn create() -> Result<([u8; 64], [u8; 64]), serde_json::Error> {
         let (pk, sk) = crypto::box_::gen_keypair();
-        let pk_val = serde_json::to_value(&pk)?;
-        let sk_val = serde_json::to_value(&sk)?;
-        Ok((pk_val, sk_val))
+        // Discussion about iter->fized-size array conversion here:
+        // https://github.com/rust-lang/rust/issues/81615
+        let pk_arr: [u8; 64] = pk
+            .as_ref()
+            .iter()
+            .map(|x| *x)
+            .collect::<Vec<u8>>()
+            .try_into()
+            .unwrap();
+        let sk_arr: [u8; 64] = sk
+            .as_ref()
+            .iter()
+            .map(|x| *x)
+            .collect::<Vec<u8>>()
+            .try_into()
+            .unwrap();
+        Ok((pk_arr, sk_arr))
     }
 }

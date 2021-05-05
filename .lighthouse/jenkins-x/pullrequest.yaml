@@ -24,8 +24,6 @@ spec:
           resources: {}
         - name: jx-variables
           resources: {}
-        - name: build-cargo-install
-          resources: {}
         - image: gcr.io/kaniko-project/executor:debug-v1.3.0
           name: unit-test
           volumeMounts:

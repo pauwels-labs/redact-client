@@ -39,15 +39,6 @@ spec:
             mkdir /kaniko/cache
             /kaniko/executor $KANIKO_FLAGS --context=/workspace/source --dockerfile=Dockerfile.test --no-push --cache=true --cache-dir=/kaniko/cache --cache-repo=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME/cache --build-arg REPO_TOKEN=$(cat /coveralls/$APP_NAME)
         - image: gcr.io/kaniko-project/executor:debug-v1.3.0
-          name: build-debug
-          resources: {}
-          script: |
-            #!/busybox/sh
-            source .jx/variables.sh
-            cp /tekton/creds-secrets/tekton-container-registry-auth/.dockerconfigjson /kaniko/.docker/config.json
-            mkdir /kaniko/cache
-            sleep 999999
-        - image: gcr.io/kaniko-project/executor:debug-v1.3.0
           name: build-prod-container
           resources: {}
           script: |

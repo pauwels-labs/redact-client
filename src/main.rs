@@ -67,7 +67,7 @@ async fn main() {
 
     let mut default_key_name = match config.get_str("crypto.keys.defaultkeyname") {
         Ok(dkn) => {
-            if dkn == "" {
+            if dkn.is_empty() {
                 "admin".to_owned()
             } else {
                 dkn
@@ -101,7 +101,8 @@ async fn main() {
             (pk_arr, sk_arr)
         }
         None => {
-            let keys = SodiumOxideKeypairGenerator::create().unwrap();
+            SodiumOxideKeypairGenerator::init().unwrap();
+            let keys = SodiumOxideKeypairGenerator::create();
             let pk = keys.0;
             let sk = keys.1;
             let new_pk_path = PathBuf::from(&public_keys_path).join(PathBuf::from("admin.pub"));

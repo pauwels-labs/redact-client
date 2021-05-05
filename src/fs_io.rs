@@ -2,24 +2,25 @@ use std::{boxed::Box, fs, io, iter::Iterator, path};
 
 use path::{Path, PathBuf};
 
-/**
- * These traits and structs interface out our interactions with the fs package.
- * By using these abstractions, we can tightly control our access to the filesystem,
- * handle any future changes in the fs API, optionally extend the API, and fully
- * mock out fs access for testing purposes.
- *
- * In general, it's best to match the existing fs api without extension. This way
- * we can use fs docs knowing that *Container traits are pass through functions to the
- * underlying fs crate.
- *
- * If a pass through function does not exist for the method you need, simply add it to
- * the trait and add a pass-through implementation.
- */
+/// These traits and structs interface out our interactions with the fs package.
+/// By using these abstractions, we can tightly control our access to the filesystem,
+/// handle any future changes in the fs API, optionally extend the API, and fully
+/// mock out fs access for testing purposes.
+///
+/// In general, it's best to match the existing fs api without extension. This way
+/// we can use fs docs knowing thatContainer traits are pass through functions to the
+/// underlying fs crate.
+///
+/// If a pass through function does not exist for the method you need, simply add it to
+/// the trait and add a pass-through implementation.
+
+/// Pass-through trait to std::fs::Metadata
 pub trait MetadataContainer {
     fn is_file(&self) -> bool;
     fn is_dir(&self) -> bool;
 }
 
+/// Owns an std::fs::Metadata struct
 pub struct Metadata(fs::Metadata);
 
 impl MetadataContainer for Metadata {
@@ -32,10 +33,12 @@ impl MetadataContainer for Metadata {
     }
 }
 
+/// Pass-through trait to std::fs::DirEntry
 pub trait DirEntryContainer {
     fn path(&self) -> PathBuf;
 }
 
+/// Owns an std::fs::DirEntry
 pub struct DirEntry(fs::DirEntry);
 
 impl DirEntryContainer for DirEntry {
@@ -44,8 +47,10 @@ impl DirEntryContainer for DirEntry {
     }
 }
 
+/// Pass-through trait to std::fs::ReadDir
 pub trait ReadDirContainer: Iterator<Item = io::Result<Box<dyn DirEntryContainer>>> {}
 
+/// Owns an std::fs::ReadDir
 pub struct ReadDir(fs::ReadDir);
 
 impl Iterator for ReadDir {
@@ -64,11 +69,14 @@ impl Iterator for ReadDir {
 
 impl ReadDirContainer for ReadDir {}
 
+/// Primary interface into the std::fs methods
 pub trait FsReadWriter {
     fn read_dir(&self, path: &str) -> io::Result<Box<dyn ReadDirContainer>>;
     fn metadata(&self, path: &Path) -> io::Result<Box<dyn MetadataContainer>>;
 }
 
+/// Provides access to the filesystem. This struct should be extended when necessary
+/// to access more underlying std::fs methods. std::fs should NOT be used directly.
 pub struct Fs {}
 
 impl FsReadWriter for Fs {
@@ -87,26 +95,44 @@ impl FsReadWriter for Fs {
     }
 }
 
+/// Contains a list of paths that passed through the filter. Also
+/// contains a list of IO errors that were encountered when attempting
+/// to read entries in the directory.
 pub struct FilterResult {
     pub paths: Vec<PathBuf>,
     pub io_errors: Vec<io::Error>,
 }
 
+/// Filters entries in a directory
 pub struct FsFilterer<FS: FsReadWriter> {
     fs_rw: FS,
 }
 
 impl FsFilterer<Fs> {
+    /// This is the default constructor. It instantiates FsFilterer with an instance
+    /// of the Fs struct which will access the underlying filesystem.
     pub fn new() -> FsFilterer<Fs> {
         FsFilterer { fs_rw: Fs {} }
     }
 }
 
 impl<FS: FsReadWriter> FsFilterer<FS> {
+    /// Use this constructor when providing a custom implementation of the FsReadWriter
+    /// struct. This allows plugging in mocks or new libs if using std::fs is undesirable.
     pub fn new_custom(fs_rw: FS) -> FsFilterer<FS> {
         FsFilterer { fs_rw }
     }
 
+    /// Filters the entries in a directory based on whether the entry:
+    /// - Is a file or directory
+    /// - Is hidden or not hidden (name preceded with a '.')
+    /// - Has an extension of a particular type
+    ///
+    /// Parameters are provided as binary arguments. Therefore:
+    /// - 0b01 keeps files, 0b10 keeps directories, 0b11 keeps both
+    /// - 0b01 keeps non-hidden files, 0b10 keeps hidden files, 0b11 keeps both
+    /// - Some("ext") keeps entries with filename extension ".ext", None keeps entries
+    ///   with no extension at all
     pub fn dir(
         &self,
         path: &str,

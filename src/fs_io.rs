@@ -8,7 +8,7 @@ use path::{Path, PathBuf};
 /// mock out fs access for testing purposes.
 ///
 /// In general, it's best to match the existing fs api without extension. This way
-/// we can use fs docs knowing thatContainer traits are pass through functions to the
+/// we can use fs docs knowing that *Container traits are pass through functions to the
 /// underlying fs crate.
 ///
 /// If a pass through function does not exist for the method you need, simply add it to

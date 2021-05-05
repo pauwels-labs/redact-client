@@ -85,7 +85,7 @@ async fn main() {
     let (pk, sk) = match public_keys_filtered
         .paths
         .iter()
-        .find(|&path| path.file_stem().unwrap() == "admin")
+        .find(|&path| path.file_stem().unwrap().to_str().unwrap() == default_key_name)
     {
         Some(path) => {
             let mut pk_file = File::open(path).unwrap();
@@ -105,8 +105,10 @@ async fn main() {
             let keys = SodiumOxideKeypairGenerator::create();
             let pk = keys.0;
             let sk = keys.1;
-            let new_pk_path = PathBuf::from(&public_keys_path).join(PathBuf::from("admin.pub"));
-            let new_sk_path = PathBuf::from(&secret_keys_path).join(PathBuf::from("admin.key"));
+            let new_pk_path = PathBuf::from(&public_keys_path)
+                .join(PathBuf::from(format!("{}.pub", default_key_name)));
+            let new_sk_path = PathBuf::from(&secret_keys_path)
+                .join(PathBuf::from(format!("{}.key", default_key_name)));
             let mut pk_file = File::create(new_pk_path).unwrap();
             pk_file.write_all(&pk).unwrap();
             let mut sk_file = File::create(new_sk_path).unwrap();

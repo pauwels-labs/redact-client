@@ -24,12 +24,22 @@ spec:
           resources: {}
         - name: jx-variables
           resources: {}
-        - name: build-cargo-install
+        - image: gcr.io/kaniko-project/executor:debug-v1.3.0
+          name: unit-test
+          volumeMounts:
+          - name: coveralls-repo-tokens
+            mountPath: /coveralls
           resources: {}
-        - name: build-container-build
-          resources: {}
-        - name: promote-jx-preview
-          resources: {}
+          script: |
+            #!/busybox/sh
+            source .jx/variables.sh
+            cp /tekton/creds-secrets/tekton-container-registry-auth/.dockerconfigjson /kaniko/.docker/config.json
+            mkdir /kaniko/cache
+            /kaniko/executor $KANIKO_FLAGS --context=/workspace/source --dockerfile=Dockerfile.test --no-push --cache=true --cache-dir=/kaniko/cache --cache-repo=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME/cache --build-arg REPO_TOKEN=$(cat /coveralls/$APP_NAME)
+        volumes:
+        - name: coveralls-repo-tokens
+          secret:
+            secretName: coveralls-repo-tokens
   podTemplate: {}
   serviceAccountName: tekton-bot
   timeout: 240h0m0s

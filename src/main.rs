@@ -1,3 +1,5 @@
+mod crypto;
+mod fs_io;
 mod render;
 mod routes;
 mod storage;
@@ -18,14 +20,14 @@ struct Healthz {}
 fn get_port<T: Configurator>(config: &T) -> u16 {
     match config.get_int("server.port") {
         Ok(port) => {
-            if port < 1 || port > 65535 {
+            if (1..65536).contains(&port) {
+                port as u16
+            } else {
                 println!(
                     "listen port value '{}' is not between 1 and 65535, defaulting to 8080",
                     port
                 );
-                8080 as u16
-            } else {
-                port as u16
+                8080
             }
         }
         Err(e) => {
@@ -34,7 +36,7 @@ fn get_port<T: Configurator>(config: &T) -> u16 {
                 rust_config::ConfigError::NotFound(_) => (),
                 _ => println!("{}", e),
             }
-            8080 as u16
+            8080
         }
     }
 }
@@ -46,6 +48,15 @@ async fn main() {
 
     // Determine port to listen on
     let port = get_port(&config);
+
+    // Find or generate secret keys
+    let public_keys_path = config.get_str("crypto.keys.publicpath").unwrap();
+    let private_keys_path = config.get_str("crypto.keys.privatepath").unwrap();
+    let filter = fs_io::FsFilterer::new();
+    let filter_result = filter.dir(&public_keys_path, 1, 1, Some(&"pub")).unwrap();
+    filter_result.paths.iter().for_each(|entry| {
+        println!("{}", entry);
+    });
 
     // Load HTML templates
     let mut template_mapping = HashMap::new();

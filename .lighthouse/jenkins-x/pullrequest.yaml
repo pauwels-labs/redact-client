@@ -26,10 +26,32 @@ spec:
           resources: {}
         - name: build-cargo-install
           resources: {}
-        - name: build-container-build
+        - image: gcr.io/kaniko-project/executor:debug-v1.3.0
+          name: unit-test
+          volumeMounts:
+          - name: coveralls-repo-tokens
+            mountPath: /coveralls
           resources: {}
-        - name: promote-jx-preview
+          script: |
+            #!/busybox/sh
+            source .jx/variables.sh
+            cp /tekton/creds-secrets/tekton-container-registry-auth/.dockerconfigjson /kaniko/.docker/config.json
+            mkdir /kaniko/cache
+            /kaniko/executor $KANIKO_FLAGS --context=/workspace/source --dockerfile=Dockerfile.test --no-push --cache=true --cache-dir=/kaniko/cache --cache-repo=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME/cache --build-arg REPO_TOKEN=$(cat /coveralls/$APP_NAME)
+        - image: gcr.io/kaniko-project/executor:debug-v1.3.0
+          name: build-container-build-cached
           resources: {}
+          script: |
+            #!/busybox/sh
+            source .jx/variables.sh
+            cp /tekton/creds-secrets/tekton-container-registry-auth/.dockerconfigjson /kaniko/.docker/config.json
+            mkdir /kaniko/cache
+            /kaniko/executor $KANIKO_FLAGS --context=/workspace/source --dockerfile=Dockerfile --destination=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME:$VERSION --cache=true --cache-dir=/kaniko/cache --cache-repo=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME/cache
+            /kaniko/executor $KANIKO_FLAGS --context=/workspace/source --dockerfile=Dockerfile.dev --destination=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME:$VERSION-alpine3.13 --cache=true --cache-dir=/kaniko/cache --cache-repo=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME/cache
+        volumes:
+        - name: coveralls-repo-tokens
+          secret:
+            secretName: coveralls-repo-tokens
   podTemplate: {}
   serviceAccountName: tekton-bot
   timeout: 240h0m0s

@@ -6,3 +6,7 @@
 
 # don't include the cov report
 tarpaulin-report.html
+
+# don't send any keys up
+keys/public/*
+keys/private/*

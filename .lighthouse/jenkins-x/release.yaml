@@ -39,7 +39,7 @@ spec:
             mkdir /kaniko/cache
             /kaniko/executor $KANIKO_FLAGS --context=/workspace/source --dockerfile=Dockerfile.test --no-push --cache=true --cache-dir=/kaniko/cache --cache-repo=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME/cache --build-arg REPO_TOKEN=$(cat /coveralls/$APP_NAME)
         - image: gcr.io/kaniko-project/executor:debug-v1.3.0
-          name: build-container-build-cached
+          name: build-prod-container
           resources: {}
           script: |
             #!/busybox/sh
@@ -48,7 +48,7 @@ spec:
             mkdir /kaniko/cache
             /kaniko/executor $KANIKO_FLAGS --context=/workspace/source --dockerfile=Dockerfile --destination=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME:$VERSION --cache=true --cache-dir=/kaniko/cache --cache-repo=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME/cache
         - image: gcr.io/kaniko-project/executor:debug-v1.3.0
-          name: build-container-build-cached
+          name: build-alpine-container
           resources: {}
           script: |
             #!/busybox/sh

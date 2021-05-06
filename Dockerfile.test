@@ -22,5 +22,5 @@ RUN rm -rf src
 # If the bust file exists, it will be added
 # If it's filled with a random value, the testing and code coverage
 # cache will be broken
-COPY src bust /usr/src/service
+COPY src bust /usr/src/service/
 RUN cargo tarpaulin --coveralls $REPO_TOKEN

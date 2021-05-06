@@ -2,8 +2,8 @@ apiVersion: config.lighthouse.jenkins-x.io/v1alpha1
 kind: TriggerConfig
 spec:
   presubmits:
-  - name: Unit Test
-    context: "pr"
+  - name: unit-test
+    context: "Unit Test"
     always_run: true
     optional: false
     source: "pullrequest.yaml"

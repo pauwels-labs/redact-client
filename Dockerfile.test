@@ -23,4 +23,6 @@ RUN rm -rf src
 # If it's filled with a random value, the testing and code coverage
 # cache will be broken
 COPY src bust ./src/
+# Copy the fit folder so code cov knows which branch we're on
+COPY .git .git
 RUN cargo tarpaulin --coveralls $REPO_TOKEN

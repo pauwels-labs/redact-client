@@ -1,10 +1,11 @@
-use sodiumoxide::crypto;
+use sodiumoxide::crypto::{box_, secretbox};
 use std::{convert::TryInto, vec::Vec};
 
-/// Specifies an interface for generating secure
-/// cryptographic keypairs.
-pub trait KeypairGenerator {
-    fn create() -> ([u8; 64], [u8; 64]);
+/// Specifies an interface for performing cryptographic
+/// functions
+pub trait CryptoProvider {
+    fn create_asymmetric_key() -> ([u8; 64], [u8; 64]);
+    fn create_symmetric_key() -> [u8; 64];
 }
 
 /// Implements the KeypairGenerator trait using the
@@ -16,9 +17,9 @@ pub trait KeypairGenerator {
 /// Poly1305.
 /// For more information on the crypto, see:
 /// http://nacl.cr.yp.to/valid.html
-pub struct SodiumOxideKeypairGenerator {}
+pub struct SodiumOxideCryptoProvider {}
 
-impl SodiumOxideKeypairGenerator {
+impl SodiumOxideCryptoProvider {
     /// Calls sodiumoxide's init function.
     /// According to libsodium's documentation, it's safe to call this
     /// function multiple times:
@@ -28,20 +29,20 @@ impl SodiumOxideKeypairGenerator {
     }
 }
 
-impl KeypairGenerator for SodiumOxideKeypairGenerator {
+impl CryptoProvider for SodiumOxideCryptoProvider {
     /// Generates an ECDSA keypair using a combination of Curve25519, Salsa20,
     /// and Poly1305.
-    fn create() -> ([u8; 64], [u8; 64]) {
-        let (pk, sk) = crypto::box_::gen_keypair();
+    fn create_asymmetric_key() -> ([u8; 64], [u8; 64]) {
+        let (pk, sk) = box_::gen_keypair();
         // Discussion about iter->fized-size array conversion here:
         // https://github.com/rust-lang/rust/issues/81615
-        let pk_arr: [u8; 64] = pk
-            .as_ref()
-            .iter()
-            .copied()
-            .collect::<Vec<u8>>()
-            .try_into()
-            .unwrap();
+        let pk_arr: [u8; 64] = match pk.as_ref().iter().copied().collect::<Vec<u8>>().try_into() {
+            Ok(a) => a,
+            Err(e) => {
+                println!("{:?}", e);
+                [0; 64]
+            }
+        };
         let sk_arr: [u8; 64] = sk
             .as_ref()
             .iter()
@@ -50,5 +51,15 @@ impl KeypairGenerator for SodiumOxideKeypairGenerator {
             .try_into()
             .unwrap();
         (pk_arr, sk_arr)
+    }
+
+    fn create_symmetric_key() -> [u8; 64] {
+        secretbox::gen_key()
+            .as_ref()
+            .iter()
+            .copied()
+            .collect::<Vec<u8>>()
+            .try_into()
+            .unwrap()
     }
 }

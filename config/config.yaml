@@ -5,3 +5,5 @@ crypto:
     defaultkeyname: admin
     publicpath: ./keys/public
     privatepath: ./keys/private
+  symmetric:
+    defaultkeyname: default

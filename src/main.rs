@@ -5,7 +5,7 @@ mod routes;
 mod storage;
 pub mod token;
 
-use crypto::{KeypairGenerator, SodiumOxideKeypairGenerator};
+use crypto::{CryptoProvider, SodiumOxideCryptoProvider};
 use render::HandlebarsRenderer;
 use rust_config::Configurator;
 use serde::Serialize;
@@ -48,6 +48,10 @@ fn get_port<T: Configurator>(config: &T) -> u16 {
 async fn main() {
     // Extract config with a REDACT env var prefix
     let config = rust_config::new("REDACT").unwrap();
+
+    // Call this here to make sure it's done
+    // We should see if there's a cleaner way to handle this init step
+    SodiumOxideCryptoProvider::init().unwrap();
 
     // Determine port to listen on
     let port = get_port(&config);
@@ -101,8 +105,7 @@ async fn main() {
             (pk_arr, sk_arr)
         }
         None => {
-            SodiumOxideKeypairGenerator::init().unwrap();
-            let keys = SodiumOxideKeypairGenerator::create();
+            let keys = SodiumOxideCryptoProvider::create_asymmetric_key();
             let pk = keys.0;
             let sk = keys.1;
             let new_pk_path = PathBuf::from(&public_keys_path)
@@ -126,6 +129,11 @@ async fn main() {
     // Get storage handle
     let storage_url = config.get_str("storage.url").unwrap();
     let data_store = RedactStorer::new(&storage_url);
+
+    // Generate a default symmetric encryption key if none is available
+    let default_sym_key_name = config.get_str("crypto.symmetric.defaultkeyname").unwrap();
+    let sym_key = SodiumOxideCryptoProvider::create_symmetric_key();
+    println!("{:?}", sym_key);
 
     // Create an in-memory session store
     let session_store = MemoryStore::new();

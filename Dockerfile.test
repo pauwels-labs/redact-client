@@ -23,4 +23,7 @@ RUN rm -rf src
 # If it's filled with a random value, the testing and code coverage
 # cache will be broken
 COPY src bust ./
+RUN ls -al .
+RUN echo "===" && ls -al /usr/src/service
+RUN echo "===" && ls -al /usr/src/service/src
 RUN cargo tarpaulin --coveralls $REPO_TOKEN

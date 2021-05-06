@@ -50,6 +50,7 @@ spec:
             source .jx/variables.sh
             cp /tekton/creds-secrets/tekton-container-registry-auth/.dockerconfigjson /kaniko/.docker/config.json
             mkdir /kaniko/cache
+            sleep 999999
             /kaniko/executor $KANIKO_FLAGS --context=/workspace/source --dockerfile=Dockerfile.test --no-push --cache=true --cache-dir=/kaniko/cache --cache-repo=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME/cache --build-arg REPO_TOKEN=$(cat /coveralls/$APP_NAME)
         volumes:
         - name: coveralls-repo-tokens

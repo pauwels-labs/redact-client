@@ -39,6 +39,7 @@ spec:
             mkdir /kaniko/cache
             # Write a random value to a file named "bust" here to force the test Dockerfile
             # to re-run tests and code coverage without breaking the dependency and build cache
+            git switch -c master
             head -c 32 /dev/random > bust
             /kaniko/executor $KANIKO_FLAGS --context=/workspace/source --dockerfile=Dockerfile.test --no-push --cache=true --cache-dir=/kaniko/cache --cache-repo=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME/cache --build-arg REPO_TOKEN=$(cat /coveralls/$APP_NAME)
         - image: gcr.io/kaniko-project/executor:debug-v1.3.0

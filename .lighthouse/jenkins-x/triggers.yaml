@@ -3,7 +3,7 @@ kind: TriggerConfig
 spec:
   presubmits:
   - name: unit-test
-    context: "Unit Test"
+    context: "unit-test"
     always_run: true
     optional: false
     source: "pullrequest.yaml"

@@ -3,9 +3,10 @@ mod fs_io;
 mod render;
 mod routes;
 mod storage;
+mod sym_keys_storage;
 pub mod token;
 
-use crypto::{CryptoProvider, SodiumOxideCryptoProvider};
+use crypto::SymmetricKeyEncryptDecryptor;
 use render::HandlebarsRenderer;
 use rust_config::Configurator;
 use serde::Serialize;
@@ -98,14 +99,14 @@ async fn main() {
                     .join(path.file_stem().unwrap().to_str().unwrap().to_owned() + ".key"),
             )
             .unwrap();
-            let mut pk_arr: [u8; 64] = [0; 64];
-            let mut sk_arr: [u8; 64] = [0; 64];
+            let mut pk_arr: [u8; 32] = [0; 32];
+            let mut sk_arr: [u8; 32] = [0; 32];
             assert!(pk_file.read(&mut pk_arr).unwrap() == 64);
             assert!(sk_file.read(&mut sk_arr).unwrap() == 64);
             (pk_arr, sk_arr)
         }
         None => {
-            let keys = SodiumOxideCryptoProvider::create_asymmetric_key();
+            let asym_enc_dec = SodiumOxideAsymmetricKeyEncryptDecryptor::new();
             let pk = keys.0;
             let sk = keys.1;
             let new_pk_path = PathBuf::from(&public_keys_path)
@@ -132,8 +133,7 @@ async fn main() {
 
     // Generate a default symmetric encryption key if none is available
     let default_sym_key_name = config.get_str("crypto.symmetric.defaultkeyname").unwrap();
-    let sym_key = SodiumOxideCryptoProvider::create_symmetric_key();
-    println!("{:?}", sym_key);
+    let sym_key = SymmetricKeyEncryptDecryptor::new();
 
     // Create an in-memory session store
     let session_store = MemoryStore::new();

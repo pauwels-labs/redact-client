@@ -1,8 +1,10 @@
+use crate::crypto::SymmetricKeyEncryptDecryptor;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::ops::Deref;
 use std::sync::Arc;
+use std::vec::Vec;
 use thiserror::Error;
 use warp::{
     reject::{self, Reject},
@@ -24,6 +26,65 @@ pub enum StorageError {
 impl Reject for StorageError {}
 
 #[derive(Serialize, Deserialize, Debug)]
+pub enum KeySourceType {
+    Value,
+    FS,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FsKeyInfo {
+    pub is_symmetric: bool,
+    pub alg: String,
+    pub encrypted_by: Option<String>,
+    pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ValueKeyInfo {
+    pub is_symmetric: bool,
+    pub alg: String,
+    pub encrypted_by: Option<String>,
+    pub value: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Key<T> {
+    pub source: KeySourceType,
+    pub name: String,
+    pub key_info: T,
+}
+
+#[async_trait]
+pub trait SymmetricKeyStorer: Clone + Send + Sync {
+    async fn get(&self, path: &str) -> Result<Box<dyn SymmetricKeyEncryptDecryptor>, Rejection>;
+}
+
+#[derive(Clone)]
+pub struct RedactSymmetricKeyStorer {
+    url: String,
+}
+
+impl RedactSymmetricKeyStorer {
+    pub fn new(url: &str) -> RedactSymmetricKeyStorer {
+        RedactSymmetricKeyStorer {
+            url: url.to_string(),
+        }
+    }
+}
+
+impl SymmetricKeyStorer for RedactSymmetricKeyStorer {
+    async fn get(&self, path: &str) -> Result<Box<dyn SymmetricKeyEncryptDecryptor>, Rejection> {
+        match reqwest::get(&format!("{}/keys/{}", self.url, path)).await {
+            Ok(r) => Ok(r
+                .json::<Data>()
+                .await
+                .map_err(|source| reject::custom(StorageError::DeserializationError { source }))?),
+            Err(source) => Err(reject::custom(StorageError::FetchError { source })),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Data {
     pub data_type: String,
     pub path: String,
@@ -36,7 +97,7 @@ pub struct DataCollection {
 }
 
 #[async_trait]
-pub trait Storer: Clone + Send + Sync {
+pub trait DataStorer: Clone + Send + Sync {
     async fn get(&self, path: &str) -> Result<Data, Rejection>;
     async fn get_collection(
         &self,
@@ -48,9 +109,9 @@ pub trait Storer: Clone + Send + Sync {
 }
 
 #[async_trait]
-impl<U> Storer for Arc<U>
+impl<U> DataStorer for Arc<U>
 where
-    U: Storer,
+    U: DataStorer,
 {
     async fn get(&self, path: &str) -> Result<Data, Rejection> {
         self.deref().get(path).await
@@ -84,7 +145,7 @@ impl RedactStorer {
 }
 
 #[async_trait]
-impl Storer for RedactStorer {
+impl DataStorer for RedactStorer {
     async fn get(&self, path: &str) -> Result<Data, Rejection> {
         match reqwest::get(&format!("{}/data/{}", self.url, path)).await {
             Ok(r) => Ok(r
@@ -130,7 +191,7 @@ impl Storer for RedactStorer {
 
 #[cfg(test)]
 pub mod tests {
-    use super::{Data, DataCollection, Storer};
+    use super::{Data, DataCollection, DataStorer};
     use async_trait::async_trait;
     use mockall::predicate::*;
     use mockall::*;
@@ -142,15 +203,15 @@ pub mod tests {
             fn clone(&self) -> Self;
     }
     #[async_trait]
-    impl Storer for Storer {
-        async fn get(&self, path: &str) -> Result<Data, Rejection>;
-        async fn get_collection(
-        &self,
-        path: &str,
-        skip: i64,
-        page_size: i64,
-        ) -> Result<DataCollection, Rejection>;
-        async fn create(&self, path: &str, value: Data) -> Result<bool, Rejection>;
+    impl DataStorer for Storer {
+    async fn get(&self, path: &str) -> Result<Data, Rejection>;
+    async fn get_collection(
+            &self,
+            path: &str,
+            skip: i64,
+            page_size: i64,
+    ) -> Result<DataCollection, Rejection>;
+    async fn create(&self, path: &str, value: Data) -> Result<bool, Rejection>;
     }
     }
 }

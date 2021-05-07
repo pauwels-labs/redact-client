@@ -1,7 +1,7 @@
 pub mod data {
     pub mod post {
         use crate::render::{RenderTemplate, Rendered, Renderer};
-        use crate::storage::{Data, Storer};
+        use crate::storage::{Data, DataStorer};
         use crate::token::TokenGenerator;
         use serde::{Deserialize, Serialize};
         use serde_json::Value;
@@ -23,7 +23,7 @@ pub mod data {
             data_type: String,
         }
 
-        pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: Storer>(
+        pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer>(
             session_store: S,
             render_engine: R,
             token_generator: T,
@@ -176,7 +176,7 @@ pub mod data {
     }
     pub mod get {
         use crate::render::{RenderTemplate, Rendered, Renderer};
-        use crate::storage::Storer;
+        use crate::storage::DataStorer;
         use crate::token::TokenGenerator;
         use serde::{Deserialize, Serialize};
         use std::collections::HashMap;
@@ -305,7 +305,7 @@ pub mod data {
                 .and_then(warp_sessions::reply::with_session)
         }
 
-        pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: Storer>(
+        pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer>(
             session_store: S,
             render_engine: R,
             token_generator: T,

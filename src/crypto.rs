@@ -1,11 +1,78 @@
-use sodiumoxide::crypto::{box_, secretbox};
-use std::{convert::TryInto, vec::Vec};
+use crate::storage::{FsKeyInfo, Key as KeyMetadata, ValueKeyInfo};
+use sodiumoxide::crypto::{box_, box_::PublicKey, box_::SecretKey, secretbox, secretbox::Key};
+use std::{convert::TryFrom, fs::File, io::Read, path::Path, vec::Vec};
+
+pub trait SymmetricKeyEncryptDecryptor {}
+pub trait AsymmetricKeyEncryptDecryptor {
+    fn new() -> Self;
+}
+
+pub struct SodiumOxideSymmetricKeyEncryptDecryptor {
+    key: Key,
+}
+
+pub struct SodiumOxideAsymmetricKeyEncryptDecryptor {
+    pk: PublicKey,
+    sk: SecretKey,
+}
+
+impl TryFrom<KeyMetadata<FsKeyInfo>> for SodiumOxideSymmetricKeyEncryptDecryptor {
+    type Error = &'static str;
+
+    fn try_from(km: KeyMetadata<FsKeyInfo>) -> Result<Self, Self::Error> {
+        Self::try_from(Path::new(&km.key_info.path))
+    }
+}
+
+impl TryFrom<KeyMetadata<ValueKeyInfo>> for SodiumOxideSymmetricKeyEncryptDecryptor {
+    type Error = &'static str;
+
+    fn try_from(km: KeyMetadata<ValueKeyInfo>) -> Result<Self, Self::Error> {
+        Self::try_from(km.key_info.value.as_slice())
+    }
+}
+
+impl TryFrom<&Path> for SodiumOxideSymmetricKeyEncryptDecryptor {
+    type Error = &'static str;
+
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        let key_file = File::open(path).map_err(|e| "io error")?;
+        let mut key_str = String::new();
+        key_file.read_to_string(&mut key_str);
+
+        Self::try_from(key_str.as_bytes())
+    }
+}
+
+impl TryFrom<&[u8]> for SodiumOxideSymmetricKeyEncryptDecryptor {
+    type Error = &'static str;
+
+    fn try_from(key: &[u8]) -> Result<Self, Self::Error> {
+        let key = Key::from_slice(key).ok_or("key creation error")?;
+        Ok(SodiumOxideSymmetricKeyEncryptDecryptor { key })
+    }
+}
+
+// impl SymmetricKeyEncryptDecryptor for SodiumOxideSymmetricKeyEncryptDecryptor {
+//     fn new() -> Self {
+//         SodiumOxideSymmetricKeyEncryptDecryptor {
+//             key: secretbox::gen_key(),
+//         }
+//     }
+// }
+
+// impl AsymmetricKeyEncryptDecryptor for SodiumOxideAsymmetricKeyEncryptDecryptor {
+//     fn new() -> Self {
+//         let (pk, sk) = box_::gen_keypair();
+//         SodiumOxideAsymmetricKeyEncryptDecryptor { pk, sk }
+//     }
+// }
 
 /// Specifies an interface for performing cryptographic
 /// functions
 pub trait CryptoProvider {
-    fn create_asymmetric_key() -> ([u8; 64], [u8; 64]);
-    fn create_symmetric_key() -> [u8; 64];
+    fn create_asymmetric_key<T: AsymmetricKeyEncryptDecryptor>() -> T;
+    fn create_symmetric_key<T: SymmetricKeyEncryptDecryptor>() -> T;
 }
 
 /// Implements the KeypairGenerator trait using the
@@ -32,28 +99,28 @@ impl SodiumOxideCryptoProvider {
 impl CryptoProvider for SodiumOxideCryptoProvider {
     /// Generates an ECDSA keypair using a combination of Curve25519, Salsa20,
     /// and Poly1305.
-    fn create_asymmetric_key() -> ([u8; 64], [u8; 64]) {
+    fn create_asymmetric_key() -> ([u8; 32], [u8; 32]) {
         let (pk, sk) = box_::gen_keypair();
         // Discussion about iter->fized-size array conversion here:
         // https://github.com/rust-lang/rust/issues/81615
-        let pk_arr: [u8; 64] = match pk.as_ref().iter().copied().collect::<Vec<u8>>().try_into() {
-            Ok(a) => a,
-            Err(e) => {
-                println!("{:?}", e);
-                [0; 64]
-            }
-        };
-        let sk_arr: [u8; 64] = sk
-            .as_ref()
-            .iter()
-            .copied()
-            .collect::<Vec<u8>>()
-            .try_into()
-            .unwrap();
-        (pk_arr, sk_arr)
+        // let pk_arr: [u8; 32] = pk
+        //     .as_ref()
+        //     .iter()
+        //     .copied()
+        //     .collect::<Vec<u8>>()
+        //     .try_into()
+        //     .unwrap();
+        // let sk_arr: [u8; 32] = sk
+        //     .as_ref()
+        //     .iter()
+        //     .copied()
+        //     .collect::<Vec<u8>>()
+        //     .try_into()
+        //     .unwrap();
+        (pk, sk)
     }
 
-    fn create_symmetric_key() -> [u8; 64] {
+    fn create_symmetric_key() -> [u8; 32] {
         secretbox::gen_key()
             .as_ref()
             .iter()

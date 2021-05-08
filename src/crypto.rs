@@ -1,57 +1,170 @@
-use crate::storage::{FsKeyInfo, Key as KeyMetadata, ValueKeyInfo};
-use sodiumoxide::crypto::{box_, box_::PublicKey, box_::SecretKey, secretbox, secretbox::Key};
-use std::{convert::TryFrom, fs::File, io::Read, path::Path, vec::Vec};
+use serde::{Deserialize, Serialize};
+use sodiumoxide::crypto::{
+    box_, box_::PublicKey, box_::SecretKey, secretbox, secretbox::Key as SodiumOxideKey,
+};
+use std::{
+    convert::{TryFrom, TryInto},
+    vec::Vec,
+};
 
-pub trait SymmetricKeyEncryptDecryptor {}
-pub trait AsymmetricKeyEncryptDecryptor {
-    fn new() -> Self;
+pub struct ValueKeySource {
+    value: Vec<u8>,
+}
+pub struct FsKeySource {
+    path: String,
 }
 
-pub struct SodiumOxideSymmetricKeyEncryptDecryptor {
-    key: Key,
-}
+impl TryFrom<FsKeySource> for ValueKeySource {
+    type Error = std::io::Error;
 
-pub struct SodiumOxideAsymmetricKeyEncryptDecryptor {
-    pk: PublicKey,
-    sk: SecretKey,
-}
-
-impl TryFrom<KeyMetadata<FsKeyInfo>> for SodiumOxideSymmetricKeyEncryptDecryptor {
-    type Error = &'static str;
-
-    fn try_from(km: KeyMetadata<FsKeyInfo>) -> Result<Self, Self::Error> {
-        Self::try_from(Path::new(&km.key_info.path))
+    fn try_from(ks: FsKeySource) -> Result<Self, Self::Error> {
+        std::fs::read(ks.path)
     }
 }
 
-impl TryFrom<KeyMetadata<ValueKeyInfo>> for SodiumOxideSymmetricKeyEncryptDecryptor {
+impl TryFrom<KeySources> for ValueKeySource {
     type Error = &'static str;
 
-    fn try_from(km: KeyMetadata<ValueKeyInfo>) -> Result<Self, Self::Error> {
-        Self::try_from(km.key_info.value.as_slice())
+    fn try_from(ks: KeySources) -> Result<Self, Self::Error> {
+        match ks {
+            KeySources::Value(vks) => Ok(vks),
+            KeySources::Fs(fsks) => Ok(fsks.try_into()),
+        }
     }
 }
 
-impl TryFrom<&Path> for SodiumOxideSymmetricKeyEncryptDecryptor {
-    type Error = &'static str;
+#[derive(Serialize, Deserialize, Debug)]
+pub enum KeySources {
+    Value(ValueKeySource),
+    Fs(FsKeySource),
+}
 
-    fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        let key_file = File::open(path).map_err(|e| "io error")?;
-        let mut key_str = String::new();
-        key_file.read_to_string(&mut key_str);
+pub trait SymmetricKeyExecutor {
+    fn try_encrypt(ks: KeySources) -> String;
+}
 
-        Self::try_from(key_str.as_bytes())
+pub struct SodiumOxideSymmetricKeyExecutor {}
+
+impl SymmetricKeyExecutor for SodiumOxideSymmetricKeyExecutor {
+    fn try_encrypt<T: TryInto<ValueKeySource>>(ks: T) -> String {
+        let vks = ks.try_into::<ValueKeySource>().unwrap();
+        "hello".to_owned()
     }
 }
 
-impl TryFrom<&[u8]> for SodiumOxideSymmetricKeyEncryptDecryptor {
-    type Error = &'static str;
+pub trait AsymmetricKeyExecutor {
+    fn try_encrypt(ks: KeySources) -> String;
+}
 
-    fn try_from(key: &[u8]) -> Result<Self, Self::Error> {
-        let key = Key::from_slice(key).ok_or("key creation error")?;
-        Ok(SodiumOxideSymmetricKeyEncryptDecryptor { key })
+pub struct SodiumOxideAsymmetricKeyExecutor {}
+
+impl AsymmetricKeyExecutor for SodiumOxideAsymmetricKeyExecutor {
+    fn try_encrypt<T: TryInto<ValueKeySource>>(ks: T) -> String {
+        let vks = ks.try_into::<ValueKeySource>().unwrap();
+        "hello".to_owned()
     }
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum SymmetricKeyExecutors {
+    SodiumOxide(SodiumOxideSymmetricKeyExecutor),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum AsymmetricKeyExecutors {
+    SodiumOxide(SodiumOxideAsymmetricKeyExecutor),
+}
+
+pub enum Keys {
+    Symmetric(SymmetricKey),
+    Asymmetric(AsymmetricKey),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SymmetricKey {
+    pub source: KeySources,
+    pub executor: SymmetricKeyExecutors,
+    pub alg: String,
+    pub encrypted_by: Option<String>,
+    pub name: String,
+}
+
+impl SymmetricKey {
+    fn encrypt(&self) -> String {
+        match self.executor {
+            SymmetricKeyExecutors::SodiumOxide(so) => so.try_encrypt(self.source),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AsymmetricKey {
+    pub source: KeySources,
+    pub executor: AsymmetricKeyExecutors,
+    pub alg: String,
+    pub encrypted_by: Option<String>,
+    pub name: String,
+}
+
+impl AsymmetricKey {
+    fn encrypt(&self) -> String {
+        // match self.executor {
+        //     KeyExecutors::SodiumOxide(so) => so
+        // };
+        "hello".to_owned()
+    }
+}
+
+// pub trait SymmetricKeyEncryptDecryptor {}
+// pub trait AsymmetricKeyEncryptDecryptor {
+//     fn new() -> Self;
+// }
+
+// pub struct SodiumOxideSymmetricKeyEncryptDecryptor {
+//     key: Key,
+// }
+
+// pub struct SodiumOxideAsymmetricKeyEncryptDecryptor {
+//     pk: PublicKey,
+//     sk: SecretKey,
+// }
+
+// impl TryFrom<KeyMetadata> for SodiumOxideSymmetricKeyEncryptDecryptor {
+//     type Error = &'static str;
+
+//     fn try_from(km: KeyMetadata<FsKeyInfo>) -> Result<Self, Self::Error> {
+//         Self::try_from(Path::new(&km.key_info.path))
+//     }
+// }
+
+// impl TryFrom<KeyMetadata<ValueKeyInfo>> for SodiumOxideSymmetricKeyEncryptDecryptor {
+//     type Error = &'static str;
+
+//     fn try_from(km: KeyMetadata<ValueKeyInfo>) -> Result<Self, Self::Error> {
+//         Self::try_from(km.key_info.value.as_slice())
+//     }
+// }
+
+// impl TryFrom<&Path> for SodiumOxideSymmetricKeyEncryptDecryptor {
+//     type Error = &'static str;
+
+//     fn try_from(path: &Path) -> Result<Self, Self::Error> {
+//         let key_file = File::open(path).map_err(|e| "io error")?;
+//         let mut key_str = String::new();
+//         key_file.read_to_string(&mut key_str);
+
+//         Self::try_from(key_str.as_bytes())
+//     }
+// }
+
+// impl TryFrom<&[u8]> for SodiumOxideSymmetricKeyEncryptDecryptor {
+//     type Error = &'static str;
+
+//     fn try_from(key: &[u8]) -> Result<Self, Self::Error> {
+//         let key = Key::from_slice(key).ok_or("key creation error")?;
+//         Ok(SodiumOxideSymmetricKeyEncryptDecryptor { key })
+//     }
+// }
 
 // impl SymmetricKeyEncryptDecryptor for SodiumOxideSymmetricKeyEncryptDecryptor {
 //     fn new() -> Self {

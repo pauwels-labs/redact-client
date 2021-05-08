@@ -1,4 +1,4 @@
-use crate::crypto::SymmetricKeyEncryptDecryptor;
+use crate::crypto::{AsymmetricKey, SymmetricKey};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -25,38 +25,9 @@ pub enum StorageError {
 
 impl Reject for StorageError {}
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum KeySourceType {
-    Value,
-    FS,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct FsKeyInfo {
-    pub is_symmetric: bool,
-    pub alg: String,
-    pub encrypted_by: Option<String>,
-    pub path: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ValueKeyInfo {
-    pub is_symmetric: bool,
-    pub alg: String,
-    pub encrypted_by: Option<String>,
-    pub value: Vec<u8>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Key<T> {
-    pub source: KeySourceType,
-    pub name: String,
-    pub key_info: T,
-}
-
 #[async_trait]
 pub trait SymmetricKeyStorer: Clone + Send + Sync {
-    async fn get(&self, path: &str) -> Result<Box<dyn SymmetricKeyEncryptDecryptor>, Rejection>;
+    async fn get(&self, path: &str) -> Result<SymmetricKey, Rejection>;
 }
 
 #[derive(Clone)]
@@ -73,10 +44,40 @@ impl RedactSymmetricKeyStorer {
 }
 
 impl SymmetricKeyStorer for RedactSymmetricKeyStorer {
-    async fn get(&self, path: &str) -> Result<Box<dyn SymmetricKeyEncryptDecryptor>, Rejection> {
-        match reqwest::get(&format!("{}/keys/{}", self.url, path)).await {
+    async fn get(&self, name: &str) -> Result<SymmetricKey, Rejection> {
+        match reqwest::get(&format!("{}/keys/{}", self.url, name)).await {
             Ok(r) => Ok(r
-                .json::<Data>()
+                .json::<SymmetricKey>()
+                .await
+                .map_err(|source| reject::custom(StorageError::DeserializationError { source }))?),
+            Err(source) => Err(reject::custom(StorageError::FetchError { source })),
+        }
+    }
+}
+
+#[async_trait]
+pub trait AsymmetricKeyStorer: Clone + Send + Sync {
+    async fn get(&self, path: &str) -> Result<AsymmetricKey, Rejection>;
+}
+
+#[derive(Clone)]
+pub struct RedactAsymmetricKeyStorer {
+    url: String,
+}
+
+impl RedactAsymmetricKeyStorer {
+    pub fn new(url: &str) -> RedactAsymmetricKeyStorer {
+        RedactAsymmetricKeyStorer {
+            url: url.to_string(),
+        }
+    }
+}
+
+impl AsymmetricKeyStorer for RedactAsymmetricKeyStorer {
+    async fn get(&self, name: &str) -> Result<AsymmetricKey, Rejection> {
+        match reqwest::get(&format!("{}/keys/{}", self.url, name)).await {
+            Ok(r) => Ok(r
+                .json::<AsymmetricKey>()
                 .await
                 .map_err(|source| reject::custom(StorageError::DeserializationError { source }))?),
             Err(source) => Err(reject::custom(StorageError::FetchError { source })),

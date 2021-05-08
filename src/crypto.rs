@@ -4,7 +4,7 @@ use std::{convert::TryInto, vec::Vec};
 /// Specifies an interface for generating secure
 /// cryptographic keypairs.
 pub trait KeypairGenerator {
-    fn create() -> ([u8; 64], [u8; 64]);
+    fn create() -> ([u8; 32], [u8; 32]);
 }
 
 /// Implements the KeypairGenerator trait using the
@@ -31,18 +31,18 @@ impl SodiumOxideKeypairGenerator {
 impl KeypairGenerator for SodiumOxideKeypairGenerator {
     /// Generates an ECDSA keypair using a combination of Curve25519, Salsa20,
     /// and Poly1305.
-    fn create() -> ([u8; 64], [u8; 64]) {
+    fn create() -> ([u8; 32], [u8; 32]) {
         let (pk, sk) = crypto::box_::gen_keypair();
         // Discussion about iter->fized-size array conversion here:
         // https://github.com/rust-lang/rust/issues/81615
-        let pk_arr: [u8; 64] = pk
+        let pk_arr: [u8; 32] = pk
             .as_ref()
             .iter()
             .copied()
             .collect::<Vec<u8>>()
             .try_into()
             .unwrap();
-        let sk_arr: [u8; 64] = sk
+        let sk_arr: [u8; 32] = sk
             .as_ref()
             .iter()
             .copied()

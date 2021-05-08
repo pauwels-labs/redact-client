@@ -94,10 +94,10 @@ async fn main() {
                     .join(path.file_stem().unwrap().to_str().unwrap().to_owned() + ".key"),
             )
             .unwrap();
-            let mut pk_arr: [u8; 64] = [0; 64];
-            let mut sk_arr: [u8; 64] = [0; 64];
-            assert!(pk_file.read(&mut pk_arr).unwrap() == 64);
-            assert!(sk_file.read(&mut sk_arr).unwrap() == 64);
+            let mut pk_arr: [u8; 32] = [0; 32];
+            let mut sk_arr: [u8; 32] = [0; 32];
+            assert!(pk_file.read(&mut pk_arr).unwrap() == 32);
+            assert!(sk_file.read(&mut sk_arr).unwrap() == 32);
             (pk_arr, sk_arr)
         }
         None => {

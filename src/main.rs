@@ -1,18 +1,17 @@
-mod crypto;
-mod fs_io;
 mod render;
 mod routes;
 mod storage;
 mod sym_keys_storage;
 pub mod token;
 
-use crypto::SymmetricKeyEncryptDecryptor;
+use redact_crypto::{
+    key_sources::{BytesKeySources, KeySources, VectorBytesKeySource},
+    keys::{Keys, SecretKeys, SodiumOxideSecretKey},
+};
 use render::HandlebarsRenderer;
 use rust_config::Configurator;
 use serde::Serialize;
-use std::fs::File;
-use std::io::prelude::*;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, convert::TryInto};
 use storage::RedactStorer;
 use token::FromThreadRng;
 use warp::Filter;
@@ -52,74 +51,10 @@ async fn main() {
 
     // Call this here to make sure it's done
     // We should see if there's a cleaner way to handle this init step
-    SodiumOxideCryptoProvider::init().unwrap();
+    //SodiumOxideCryptoProvider::init().unwrap();
 
     // Determine port to listen on
     let port = get_port(&config);
-
-    // Find or generate secret keys
-    let public_keys_path = config.get_str("crypto.keys.publicpath").unwrap();
-    let secret_keys_path = config.get_str("crypto.keys.privatepath").unwrap();
-    let filter = fs_io::FsFilterer::new();
-    let public_keys_filtered = filter.dir(&public_keys_path, 1, 1, Some(&"pub")).unwrap();
-    for e in public_keys_filtered.io_errors.iter() {
-        println!("{}", e)
-    }
-    let private_keys_filtered = filter.dir(&secret_keys_path, 1, 1, Some(&"key")).unwrap();
-    for e in private_keys_filtered.io_errors.iter() {
-        println!("{}", e)
-    }
-
-    let mut default_key_name = match config.get_str("crypto.keys.defaultkeyname") {
-        Ok(dkn) => {
-            if dkn.is_empty() {
-                "admin".to_owned()
-            } else {
-                dkn
-            }
-        }
-        Err(e) => {
-            println!(
-                "error getting crypto.keys.defaultkeyname, defaulting to 'admin': {}",
-                e
-            );
-            "admin".to_owned()
-        }
-    };
-
-    let (pk, sk) = match public_keys_filtered
-        .paths
-        .iter()
-        .find(|&path| path.file_stem().unwrap().to_str().unwrap() == default_key_name)
-    {
-        Some(path) => {
-            let mut pk_file = File::open(path).unwrap();
-            let mut sk_file = File::open(
-                PathBuf::from(&secret_keys_path)
-                    .join(path.file_stem().unwrap().to_str().unwrap().to_owned() + ".key"),
-            )
-            .unwrap();
-            let mut pk_arr: [u8; 32] = [0; 32];
-            let mut sk_arr: [u8; 32] = [0; 32];
-            assert!(pk_file.read(&mut pk_arr).unwrap() == 64);
-            assert!(sk_file.read(&mut sk_arr).unwrap() == 64);
-            (pk_arr, sk_arr)
-        }
-        None => {
-            let asym_enc_dec = SodiumOxideAsymmetricKeyEncryptDecryptor::new();
-            let pk = keys.0;
-            let sk = keys.1;
-            let new_pk_path = PathBuf::from(&public_keys_path)
-                .join(PathBuf::from(format!("{}.pub", default_key_name)));
-            let new_sk_path = PathBuf::from(&secret_keys_path)
-                .join(PathBuf::from(format!("{}.key", default_key_name)));
-            let mut pk_file = File::create(new_pk_path).unwrap();
-            pk_file.write_all(&pk).unwrap();
-            let mut sk_file = File::create(new_sk_path).unwrap();
-            sk_file.write_all(&sk).unwrap();
-            (pk, sk)
-        }
-    };
 
     // Load HTML templates
     let mut template_mapping = HashMap::new();
@@ -131,9 +66,27 @@ async fn main() {
     let storage_url = config.get_str("storage.url").unwrap();
     let data_store = RedactStorer::new(&storage_url);
 
+    // Find secret keys
+    let mut bootstrap_identity: SecretKeys = config
+        .get::<Keys>("crypto.bootstrapidentity")
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    let mut fake_identity = SodiumOxideSecretKey {
+        source: KeySources::Bytes(BytesKeySources::Vector(VectorBytesKeySource {
+            value: None,
+        })),
+        alg: "curve25519xsals20poly1305".to_owned(),
+        encrypted_by: None,
+        name: "test".to_owned(),
+    };
+
+    //bootstrap_identity
+
     // Generate a default symmetric encryption key if none is available
-    let default_sym_key_name = config.get_str("crypto.symmetric.defaultkeyname").unwrap();
-    let sym_key = SymmetricKeyEncryptDecryptor::new();
+    // let default_sym_key_name = config.get_str("crypto.symmetric.defaultkeyname").unwrap();
+    // let sym_key = SymmetricKeyEncryptDecryptor::new();
 
     // Create an in-memory session store
     let session_store = MemoryStore::new();

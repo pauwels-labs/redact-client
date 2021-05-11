@@ -10,8 +10,8 @@ edition = "2018"
 tokio = { version = "1.0.2", features = ["macros", "rt-multi-thread"] }
 warp = "0.3.0"
 rust-config = { git = "https://github.com/ajpauwels/rust-config.git", rev = "f5d30659eba5cbcf57941414ddc79a19dfcf1110" }
-serde = { version = "1.0.120", features = ["derive"] }
-serde_json = "1.0.61"
+serde = { version = "1.0.125", features = ["derive"] }
+serde_json = "1.0.64"
 futures = "0.3.12"
 reqwest = { version = "0.11.0", features = ["json"] }
 uuid = { version = "0.8.2", features = ["v4"] }
@@ -27,3 +27,4 @@ mockall = "0.9.0"
 warp-sessions = "1.0.13"
 base64 = "0.13.0"
 sodiumoxide = "0.2.6"
+redact-crypto = { git = "https://github.com/pauwels-labs/redact-crypto.git", rev = "e8fb2535d7eda4175392a69345a29dba6138348c" }

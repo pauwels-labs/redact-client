@@ -66,6 +66,10 @@ impl<T: KeysStorer> KeysStorer for MemoryCachedKeysStorer<T> {
         }
     }
 
+    async fn list(&self) -> Result<KeysCollection, Rejection> {
+        self.storer.list().await
+    }
+
     async fn get_sym(&self, name: &str) -> Result<SymmetricKeys, Rejection> {
         self.storer.get_sym(name).await
     }
@@ -83,7 +87,7 @@ pub struct RedactKeysStorer {
 impl RedactKeysStorer {
     pub fn new(url: &str) -> RedactKeysStorer {
         RedactKeysStorer {
-            url: url.to_string(),
+            url: url.to_owned(),
         }
     }
 }
@@ -130,7 +134,7 @@ pub struct Data {
     pub data_type: String,
     pub path: String,
     pub value: Value,
-    pub encrypted_by: String,
+    pub encrypted_by: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

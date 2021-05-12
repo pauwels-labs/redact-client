@@ -94,6 +94,7 @@ pub mod data {
                                                 data_type: body_params.data_type.clone(),
                                                 path: path_params.path.clone(),
                                                 value: body_params.data.clone(),
+                                                encrypted_by: None,
                                             },
                                         )
                                         .await

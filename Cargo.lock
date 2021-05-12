@@ -1559,7 +1559,7 @@ dependencies = [
 [[package]]
 name = "redact-crypto"
 version = "0.1.0"
-source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=e8fb2535d7eda4175392a69345a29dba6138348c#e8fb2535d7eda4175392a69345a29dba6138348c"
+source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=25a7548da44448fe8bfd3fa8e3081c8bc98766d2#25a7548da44448fe8bfd3fa8e3081c8bc98766d2"
 dependencies = [
  "serde 1.0.125",
  "sodiumoxide",

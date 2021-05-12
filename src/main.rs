@@ -5,8 +5,7 @@ mod sym_keys_storage;
 pub mod token;
 
 use redact_crypto::{
-    key_sources::{BytesKeySources, KeySources, VectorBytesKeySource},
-    keys::{Keys, SecretKeys, SodiumOxideSecretKey},
+    keys::{Keys, SecretKeys},
 };
 use render::HandlebarsRenderer;
 use rust_config::Configurator;
@@ -66,27 +65,12 @@ async fn main() {
     let storage_url = config.get_str("storage.url").unwrap();
     let data_store = RedactStorer::new(&storage_url);
 
-    // Find secret keys
-    let mut bootstrap_identity: SecretKeys = config
+    // Get the bootstrap key from config
+    let bootstrap_identity: SecretKeys = config
         .get::<Keys>("crypto.bootstrapidentity")
         .unwrap()
         .try_into()
         .unwrap();
-
-    let mut fake_identity = SodiumOxideSecretKey {
-        source: KeySources::Bytes(BytesKeySources::Vector(VectorBytesKeySource {
-            value: None,
-        })),
-        alg: "curve25519xsals20poly1305".to_owned(),
-        encrypted_by: None,
-        name: "test".to_owned(),
-    };
-
-    //bootstrap_identity
-
-    // Generate a default symmetric encryption key if none is available
-    // let default_sym_key_name = config.get_str("crypto.symmetric.defaultkeyname").unwrap();
-    // let sym_key = SymmetricKeyEncryptDecryptor::new();
 
     // Create an in-memory session store
     let session_store = MemoryStore::new();

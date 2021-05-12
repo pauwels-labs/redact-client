@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use redact_crypto::{
     error::CryptoError,
-    keys::{AsymmetricKeys, Keys, SymmetricKeys},
+    keys::{AsymmetricKeys, Keys, KeysCollection, SymmetricKeys},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -36,6 +36,7 @@ impl Reject for StorageError {}
 #[async_trait]
 pub trait KeysStorer: Clone + Send + Sync {
     async fn get(&self, path: &str) -> Result<Keys, Rejection>;
+    async fn list(&self) -> Result<KeysCollection, Rejection>;
     async fn get_sym(&self, name: &str) -> Result<SymmetricKeys, Rejection>;
     async fn get_asym(&self, name: &str) -> Result<AsymmetricKeys, Rejection>;
 }
@@ -99,6 +100,16 @@ impl KeysStorer for RedactKeysStorer {
         }
     }
 
+    async fn list(&self) -> Result<KeysCollection, Rejection> {
+        match reqwest::get(&format!("{}/keys", self.url)).await {
+            Ok(r) => Ok(r
+                .json::<KeysCollection>()
+                .await
+                .map_err(|source| reject::custom(StorageError::DeserializationError { source }))?),
+            Err(source) => Err(reject::custom(StorageError::FetchError { source })),
+        }
+    }
+
     async fn get_sym(&self, name: &str) -> Result<SymmetricKeys, Rejection> {
         self.get(name)
             .await?
@@ -119,6 +130,7 @@ pub struct Data {
     pub data_type: String,
     pub path: String,
     pub value: Value,
+    pub encrypted_by: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

@@ -8,7 +8,10 @@
     {{ #if edit }}
     <form action="/data/{{ path }}/{{ token }}" method="POST">
       <input type="hidden" value="{{ data_type }}" id="data_type" name="data_type">
-      <input type="text" value="{{ data }}" id="data" name="data">
+      <input type="text" value="{{ data }}" id="data" name="data"><br/>
+      {{ #each key_names }}
+	<label class="checkbox-label"><input type="checkbox" class="checkbox" name="encrypted_by" value="{{ this }}"> {{ this }}</label><br/>
+      {{ /each }}
       <input type="submit" value="Submit" name="submit" id="submit">
     </form>
     {{ else }}

@@ -1,16 +1,14 @@
 use async_trait::async_trait;
 use redact_crypto::{
     error::CryptoError,
-    keys::{AsymmetricKeys, Keys, KeysCollection, SymmetricKeys},
+    keys::{Key, KeyCollection},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::convert::TryInto;
+use std::ops::Deref;
 use std::sync::Arc;
 use std::vec::Vec;
-use std::{collections::HashMap, ops::Deref};
 use thiserror::Error;
-use tokio::sync::RwLock;
 use warp::{
     reject::{self, Reject},
     Rejection,
@@ -34,99 +32,97 @@ pub enum StorageError {
 impl Reject for StorageError {}
 
 #[async_trait]
-pub trait KeysStorer: Clone + Send + Sync {
-    async fn get(&self, path: &str) -> Result<Keys, Rejection>;
-    async fn list(&self) -> Result<KeysCollection, Rejection>;
-    async fn get_sym(&self, name: &str) -> Result<SymmetricKeys, Rejection>;
-    async fn get_asym(&self, name: &str) -> Result<AsymmetricKeys, Rejection>;
+pub trait KeyStorer: Clone + Send + Sync {
+    async fn get(&self, path: &str) -> Result<Key, Rejection>;
+    async fn list(&self) -> Result<KeyCollection, Rejection>;
 }
+
+// #[derive(Clone)]
+// pub struct MemoryCachedKeysStorer<T: KeysStorer> {
+//     storer: T,
+//     key_cache: Arc<RwLock<HashMap<String, Keys>>>,
+// }
+
+// #[async_trait]
+// impl<T: KeysStorer> KeysStorer for MemoryCachedKeysStorer<T> {
+//     async fn get(&self, name: &str) -> Result<Keys, Rejection> {
+//         if let Some(key) = self.key_cache.read().await.get(name).map(Keys::clone) {
+//             Ok(key)
+//         } else {
+//             match self.storer.get(name).await {
+//                 Ok(key) => {
+//                     self.key_cache
+//                         .write()
+//                         .await
+//                         .insert(name.to_owned(), key.clone());
+//                     Ok(key)
+//                 }
+//                 Err(e) => Err(e),
+//             }
+//         }
+//     }
+
+//     async fn list(&self) -> Result<KeysCollection, Rejection> {
+//         self.storer.list().await
+//     }
+
+//     async fn get_sym(&self, name: &str) -> Result<SymmetricKeys, Rejection> {
+//         self.storer.get_sym(name).await
+//     }
+
+//     async fn get_asym(&self, name: &str) -> Result<AsymmetricKeys, Rejection> {
+//         self.storer.get_asym(name).await
+//     }
+// }
 
 #[derive(Clone)]
-pub struct MemoryCachedKeysStorer<T: KeysStorer> {
-    storer: T,
-    key_cache: Arc<RwLock<HashMap<String, Keys>>>,
-}
-
-#[async_trait]
-impl<T: KeysStorer> KeysStorer for MemoryCachedKeysStorer<T> {
-    async fn get(&self, name: &str) -> Result<Keys, Rejection> {
-        if let Some(key) = self.key_cache.read().await.get(name).map(Keys::clone) {
-            Ok(key)
-        } else {
-            match self.storer.get(name).await {
-                Ok(key) => {
-                    self.key_cache
-                        .write()
-                        .await
-                        .insert(name.to_owned(), key.clone());
-                    Ok(key)
-                }
-                Err(e) => Err(e),
-            }
-        }
-    }
-
-    async fn list(&self) -> Result<KeysCollection, Rejection> {
-        self.storer.list().await
-    }
-
-    async fn get_sym(&self, name: &str) -> Result<SymmetricKeys, Rejection> {
-        self.storer.get_sym(name).await
-    }
-
-    async fn get_asym(&self, name: &str) -> Result<AsymmetricKeys, Rejection> {
-        self.storer.get_asym(name).await
-    }
-}
-
-#[derive(Clone)]
-pub struct RedactKeysStorer {
+pub struct RedactKeyStorer {
     url: String,
 }
 
-impl RedactKeysStorer {
-    pub fn new(url: &str) -> RedactKeysStorer {
-        RedactKeysStorer {
+impl RedactKeyStorer {
+    pub fn new(url: &str) -> RedactKeyStorer {
+        RedactKeyStorer {
             url: url.to_owned(),
         }
     }
 }
 
 #[async_trait]
-impl KeysStorer for RedactKeysStorer {
-    async fn get(&self, name: &str) -> Result<Keys, Rejection> {
+impl KeyStorer for RedactKeyStorer {
+    async fn get(&self, name: &str) -> Result<Key, Rejection> {
         match reqwest::get(&format!("{}/keys/{}", self.url, name)).await {
             Ok(r) => Ok(r
-                .json::<Keys>()
+                .json::<Key>()
                 .await
                 .map_err(|source| reject::custom(StorageError::DeserializationError { source }))?),
             Err(source) => Err(reject::custom(StorageError::FetchError { source })),
         }
     }
 
-    async fn list(&self) -> Result<KeysCollection, Rejection> {
+    async fn list(&self) -> Result<KeyCollection, Rejection> {
         match reqwest::get(&format!("{}/keys", self.url)).await {
             Ok(r) => Ok(r
-                .json::<KeysCollection>()
+                .json::<KeyCollection>()
                 .await
                 .map_err(|source| reject::custom(StorageError::DeserializationError { source }))?),
             Err(source) => Err(reject::custom(StorageError::FetchError { source })),
         }
     }
 
-    async fn get_sym(&self, name: &str) -> Result<SymmetricKeys, Rejection> {
-        self.get(name)
-            .await?
-            .try_into()
-            .map_err(|source| reject::custom(StorageError::CryptoError { source }))
-    }
+    // async fn get_sym(&self, name: &str) -> Result<SymmetricKeys, Rejection> {
+    //     self.get(name)
+    //         .await?
+    //         .try_into()
+    //         .map_err(|source| reject::custom(StorageError::CryptoError { source }))
+    // }
 
-    async fn get_asym(&self, name: &str) -> Result<AsymmetricKeys, Rejection> {
-        self.get(name)
-            .await?
-            .try_into()
-            .map_err(|source| reject::custom(StorageError::CryptoError { source }))
-    }
+    // async fn get_asym(&self, name: &str) -> Result<AsymmetricKeys, Rejection> {
+    //     self.get(name)
+    //         .await?
+    //         .try_into()
+    //         .map_err(|source| reject::custom(StorageError::CryptoError { source }))
+    // }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -134,7 +130,7 @@ pub struct Data {
     pub data_type: String,
     pub path: String,
     pub value: Value,
-    pub encrypted_by: Option<String>,
+    pub encrypted_by: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -178,20 +174,20 @@ where
 }
 
 #[derive(Clone)]
-pub struct RedactStorer {
+pub struct RedactDataStorer {
     url: String,
 }
 
-impl RedactStorer {
-    pub fn new(url: &str) -> RedactStorer {
-        RedactStorer {
+impl RedactDataStorer {
+    pub fn new(url: &str) -> RedactDataStorer {
+        RedactDataStorer {
             url: url.to_string(),
         }
     }
 }
 
 #[async_trait]
-impl DataStorer for RedactStorer {
+impl DataStorer for RedactDataStorer {
     async fn get(&self, path: &str) -> Result<Data, Rejection> {
         match reqwest::get(&format!("{}/data/{}", self.url, path)).await {
             Ok(r) => Ok(r

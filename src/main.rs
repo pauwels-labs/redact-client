@@ -4,14 +4,12 @@ mod storage;
 mod sym_keys_storage;
 pub mod token;
 
-use redact_crypto::{
-    keys::{Keys, SecretKeys},
-};
+use redact_crypto::keys::{Key, SecretKeyExecutors};
 use render::HandlebarsRenderer;
 use rust_config::Configurator;
 use serde::Serialize;
 use std::{collections::HashMap, convert::TryInto};
-use storage::RedactStorer;
+use storage::{RedactDataStorer, RedactKeyStorer};
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
@@ -63,14 +61,11 @@ async fn main() {
 
     // Get storage handle
     let storage_url = config.get_str("storage.url").unwrap();
-    let data_store = RedactStorer::new(&storage_url);
+    let data_store = RedactDataStorer::new(&storage_url);
 
     // Get the bootstrap key from config
-    let bootstrap_identity: SecretKeys = config
-        .get::<Keys>("crypto.bootstrapidentity")
-        .unwrap()
-        .try_into()
-        .unwrap();
+    let bootstrap_identity: Key = config.get::<Key>("crypto.bootstrapidentity").unwrap();
+    let keys_store = RedactKeyStorer::new(&storage_url);
 
     // Create an in-memory session store
     let session_store = MemoryStore::new();
@@ -85,6 +80,7 @@ async fn main() {
         render_engine.clone(),
         token_generator.clone(),
         data_store.clone(),
+        keys_store.clone(),
     ));
     let get_routes = warp::get().and(
         routes::data::get::with_token(
@@ -92,6 +88,7 @@ async fn main() {
             render_engine.clone(),
             token_generator.clone(),
             data_store.clone(),
+            keys_store.clone(),
         )
         .or(routes::data::get::without_token(
             session_store.clone(),

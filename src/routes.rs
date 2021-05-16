@@ -1,11 +1,10 @@
 pub mod data {
     pub mod post {
-        use crate::render::{RenderTemplate, Rendered, Renderer};
-        use crate::storage::{Data, DataStorer};
+        use crate::render::{RenderTemplate, Rendered, Renderer, SecureTemplateValues};
+        use crate::storage::{Data, DataStorer, KeyStorer};
         use crate::token::TokenGenerator;
         use serde::{Deserialize, Serialize};
         use serde_json::Value;
-        use std::collections::HashMap;
         use warp::{Filter, Rejection, Reply};
         use warp_sessions::{
             CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
@@ -17,24 +16,41 @@ pub mod data {
             token: String,
         }
 
-        #[derive(Deserialize, Serialize)]
+        #[derive(Deserialize, Serialize, Debug)]
         struct SubmitDataBodyParams {
             data: Value,
             data_type: String,
+            encrypted_by: Vec<String>,
         }
 
-        pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer>(
+        #[derive(Deserialize, Serialize)]
+        struct SubmitDataQueryParams {
+            css: Option<String>,
+            edit: Option<bool>,
+            index: Option<i64>,
+            fetch_id: Option<String>,
+        }
+
+        pub fn submit_data<
+            S: SessionStore,
+            R: Renderer,
+            T: TokenGenerator,
+            D: DataStorer,
+            K: KeyStorer,
+        >(
             session_store: S,
             render_engine: R,
             token_generator: T,
             data_store: D,
+            keys_store: K,
         ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
             warp::any()
                 .and(
                     warp::path!("data" / String / String)
                         .map(|path, token| SubmitDataPathParams { path, token }),
                 )
-                .and(warp::filters::body::form::<SubmitDataBodyParams>())
+                .and(warp::query::<SubmitDataQueryParams>())
+                .and(warp::filters::body::form::<Vec<(String, String)>>())
                 .and(warp_sessions::request::with_session(
                     session_store,
                     Some(CookieOptions {
@@ -51,26 +67,52 @@ pub mod data {
                 .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
                 .and(warp::any().map(move || render_engine.clone()))
                 .and(warp::any().map(move || data_store.clone()))
+                .and(warp::any().map(move || keys_store.clone()))
                 .and_then(
                     move |path_params: SubmitDataPathParams,
-                          body_params: SubmitDataBodyParams,
+                          mut query_params: SubmitDataQueryParams,
+                          body_params: Vec<(String, String)>,
                           session_with_store: SessionWithStore<S>,
                           token: String,
                           render_engine: R,
-                          data_store: D| async move {
+                          data_store: D,
+                          keys_store: K| async move {
+                        let mut data = None;
+                        let mut data_type = None;
+                        let mut encrypted_by: Vec<String> = Vec::new();
+                        body_params.iter().for_each(|param| {
+                            if param.0 == "data" {
+                                data = Some(param.1.clone());
+                            } else if param.0 == "data_type" {
+                                data_type = Some(param.1.clone());
+                            } else if param.0 == "encrypted_by" {
+                                encrypted_by.push(param.1.clone());
+                            }
+                        });
+                        let body_params = match (data, data_type) {
+                            (Some(data), Some(data_type)) => Ok(SubmitDataBodyParams {
+                                data: data.into(),
+                                data_type,
+                                encrypted_by,
+                            }),
+                            _ => Err(warp::reject()),
+                        }?;
                         let data_str = if let Some(s) = body_params.data.as_str() {
                             s
                         } else {
                             ""
                         };
 
-                        let mut template_values = HashMap::new();
-                        template_values.insert("path".to_string(), path_params.path.clone());
-                        template_values.insert("data".to_string(), data_str.to_string());
-                        template_values
-                            .insert("data_type".to_string(), body_params.data_type.clone());
-                        template_values.insert("edit".to_string(), "true".to_string());
-                        template_values.insert("token".to_string(), token.clone());
+                        query_params.edit = Some(true);
+                        let mut template_values = SecureTemplateValues {
+                            path: path_params.path.clone(),
+                            data: data_str.to_owned(),
+                            data_type: body_params.data_type.clone(),
+                            edit: query_params.edit,
+                            token: token.clone(),
+                            css: None,
+                            encrypted_by: None,
+                        };
                         match session_with_store.session.get("token") {
                             Some::<String>(session_token) => {
                                 if session_token != path_params.token {
@@ -87,6 +129,21 @@ pub mod data {
                                         session_with_store,
                                     ))
                                 } else {
+                                    let mut encrypted_by = None;
+                                    if let Some(edit) = query_params.edit {
+                                        if edit {
+                                            if let Ok(keys) = keys_store.list().await {
+                                                encrypted_by = Some(
+                                                    keys.results
+                                                        .iter()
+                                                        .map(|key| key.name().to_owned())
+                                                        .collect(),
+                                                );
+                                            }
+                                        }
+                                    }
+                                    template_values.encrypted_by = encrypted_by;
+
                                     data_store
                                         .create(
                                             &path_params.path,
@@ -94,7 +151,9 @@ pub mod data {
                                                 data_type: body_params.data_type.clone(),
                                                 path: path_params.path.clone(),
                                                 value: body_params.data.clone(),
-                                                encrypted_by: None,
+                                                encrypted_by: Some(
+                                                    body_params.encrypted_by.clone(),
+                                                ),
                                             },
                                         )
                                         .await
@@ -176,8 +235,10 @@ pub mod data {
         }
     }
     pub mod get {
-        use crate::render::{RenderTemplate, Rendered, Renderer};
-        use crate::storage::DataStorer;
+        use crate::render::{
+            RenderTemplate, Rendered, Renderer, SecureTemplateValues, UnsecureTemplateValues,
+        };
+        use crate::storage::{DataStorer, KeyStorer};
         use crate::token::TokenGenerator;
         use serde::{Deserialize, Serialize};
         use std::collections::HashMap;
@@ -306,11 +367,18 @@ pub mod data {
                 .and_then(warp_sessions::reply::with_session)
         }
 
-        pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer>(
+        pub fn with_token<
+            S: SessionStore,
+            R: Renderer,
+            T: TokenGenerator,
+            D: DataStorer,
+            K: KeyStorer,
+        >(
             session_store: S,
             render_engine: R,
             token_generator: T,
             data_store: D,
+            keys_store: K,
         ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
             warp::any()
                 .and(
@@ -334,33 +402,35 @@ pub mod data {
                 .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
                 .and(warp::any().map(move || render_engine.clone()))
                 .and(warp::any().map(move || data_store.clone()))
+                .and(warp::any().map(move || keys_store.clone()))
                 .and_then(
                     move |path_params: WithTokenPathParams,
                           query_params: WithTokenQueryParams,
                           session_with_store: SessionWithStore<S>,
                           token: String,
                           render_engine: R,
-                          data_store: D| async move {
-                        let mut template_values = HashMap::new();
-                        match &query_params.css {
-                            Some(css) => template_values.insert("css".to_string(), css.to_owned()),
-                            _ => None,
+                          data_store: D,
+                          keys_store: K| async move {
+                        //let mut template_values2 = HashMap::new();
+                        let mut template_values = SecureTemplateValues::default();
+                        if let Some(css) = &query_params.css {
+                            template_values.css = Some(css.to_owned())
                         };
                         match &query_params.edit {
                             Some(edit) => {
                                 if *edit {
-                                    template_values.insert("edit".to_string(), "true".to_string());
-                                    template_values.insert("token".to_string(), token.clone());
+                                    template_values.edit = Some(true);
+                                    template_values.token = token.clone();
                                 }
                             }
                             _ => (),
                         };
-                        template_values.insert("path".to_string(), path_params.path.clone());
+                        template_values.path = path_params.path.clone();
 
                         match session_with_store.session.get("token") {
                             Some::<String>(session_token) => {
                                 if session_token != path_params.token {
-                                    template_values.insert("data".to_string(), "".to_string());
+                                    template_values.data = "".to_owned();
                                     Ok::<_, Rejection>((
                                         Rendered::new(
                                             render_engine,
@@ -376,12 +446,12 @@ pub mod data {
                                     ))
                                 } else {
                                     // ----- start request query validation code -----
-                                    let mut is_valid_request = true;
-                                    match (&query_params.fetch_id, query_params.index) {
-                                        (Some(_fetch_id), None) => is_valid_request = false,
-                                        (None, Some(_index)) => is_valid_request = false,
-                                        _ => (),
-                                    }
+                                    let is_valid_request =
+                                        match (&query_params.fetch_id, query_params.index) {
+                                            (Some(_fetch_id), None) => false,
+                                            (None, Some(_index)) => false,
+                                            _ => true,
+                                        };
 
                                     if !is_valid_request {
                                         return Ok::<_, Rejection>((
@@ -408,7 +478,7 @@ pub mod data {
                                                 .get_collection(&path_params.path, index, 1)
                                                 .await
                                                 .map_or_else(
-                                                    |_| ("".to_string(), "string".to_string()),
+                                                    |_| ("".to_owned(), "string".to_owned()),
                                                     |mut data| {
                                                         let (value, data_type) =
                                                             match data.results.pop() {
@@ -416,23 +486,22 @@ pub mod data {
                                                                     let val_str =
                                                                         match s.value.as_str() {
                                                                             Some(s) => s.to_owned(),
-                                                                            None => "".to_string(),
+                                                                            None => "".to_owned(),
                                                                         };
                                                                     let data_type = s.data_type;
                                                                     (val_str, data_type)
                                                                 }
                                                                 None => (
-                                                                    "".to_string(),
-                                                                    "string".to_string(),
+                                                                    "".to_owned(),
+                                                                    "string".to_owned(),
                                                                 ),
                                                             };
                                                         (value, data_type)
                                                     },
                                                 );
 
-                                            template_values.insert("data".to_string(), value);
-                                            template_values
-                                                .insert("data_type".to_string(), data_type);
+                                            template_values.data = value;
+                                            template_values.data_type = data_type;
                                         }
                                         _ => {
                                             // Non-collection request
@@ -440,20 +509,34 @@ pub mod data {
                                                 .get(&path_params.path)
                                                 .await
                                                 .map_or_else(
-                                                    |_| ("".to_string(), "string".to_string()),
+                                                    |e| ("".to_owned(), "string".to_owned()),
                                                     |data| {
                                                         let val_str = match data.value.as_str() {
                                                             Some(s) => s.to_owned(),
-                                                            None => "".to_string(),
+                                                            None => "".to_owned(),
                                                         };
                                                         (val_str, data.data_type)
                                                     },
                                                 );
-                                            template_values.insert("data".to_string(), value);
-                                            template_values
-                                                .insert("data_type".to_string(), data_type);
+                                            template_values.data = value;
+                                            template_values.data_type = data_type;
                                         }
                                     }
+
+                                    let mut encrypted_by = None;
+                                    if let Some(edit) = query_params.edit {
+                                        if edit {
+                                            if let Ok(keys) = keys_store.list().await {
+                                                encrypted_by = Some(
+                                                    keys.results
+                                                        .iter()
+                                                        .map(|key| key.name().to_owned())
+                                                        .collect(),
+                                                );
+                                            }
+                                        }
+                                    }
+                                    template_values.encrypted_by = encrypted_by;
 
                                     Ok::<_, Rejection>((
                                         Rendered::new(
@@ -473,7 +556,7 @@ pub mod data {
                                 }
                             }
                             None => {
-                                template_values.insert("data".to_string(), "".to_string());
+                                template_values.data = "".to_string();
                                 Ok::<_, Rejection>((
                                     Rendered::new(
                                         render_engine,

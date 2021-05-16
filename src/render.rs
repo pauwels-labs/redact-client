@@ -15,6 +15,27 @@ pub enum RenderError {
 
 impl Reject for RenderError {}
 
+#[derive(Serialize, Debug, Default)]
+pub struct UnsecureTemplateValues {
+    pub path: String,
+    pub token: String,
+    pub css: Option<String>,
+    pub edit: Option<bool>,
+    pub index: Option<String>,
+    pub fetch_id: Option<String>,
+}
+
+#[derive(Serialize, Debug, Default)]
+pub struct SecureTemplateValues {
+    pub path: String,
+    pub token: String,
+    pub css: Option<String>,
+    pub edit: Option<bool>,
+    pub data_type: String,
+    pub data: String,
+    pub encrypted_by: Option<Vec<String>>,
+}
+
 impl std::convert::From<TemplateFileError> for RenderError {
     fn from(source: TemplateFileError) -> Self {
         RenderError::TemplateFileError { source }

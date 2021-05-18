@@ -1,5 +1,10 @@
-use handlebars::{Handlebars, RenderError as HandlebarsRenderError, TemplateFileError};
+use handlebars::{
+    Context, Handlebars, Helper, Output, RenderContext, RenderError as HandlebarsRenderError,
+    TemplateFileError,
+};
+use redact_data::Data;
 use serde::Serialize;
+use serde_json::Value;
 use std::ops::Deref;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
@@ -21,19 +26,17 @@ pub struct UnsecureTemplateValues {
     pub token: String,
     pub css: Option<String>,
     pub edit: Option<bool>,
-    pub index: Option<String>,
+    pub index: Option<i64>,
     pub fetch_id: Option<String>,
 }
 
 #[derive(Serialize, Debug, Default)]
 pub struct SecureTemplateValues {
-    pub path: String,
-    pub token: String,
+    pub data: Option<Data>,
+    pub path: Option<String>,
+    pub token: Option<String>,
     pub css: Option<String>,
     pub edit: Option<bool>,
-    pub data_type: String,
-    pub data: String,
-    pub encrypted_by: Option<Vec<String>>,
 }
 
 impl std::convert::From<TemplateFileError> for RenderError {
@@ -68,6 +71,64 @@ impl Reply for Rendered {
     }
 }
 
+fn data_as_input(
+    h: &Helper,
+    _: &Handlebars,
+    _: &Context,
+    _: &mut RenderContext,
+    out: &mut dyn Output,
+) -> Result<(), HandlebarsRenderError> {
+    // get parameter from helper or throw an error
+    let value =
+        h.param(0)
+        .and_then(|v| v.value().get("value"))
+            .ok_or(HandlebarsRenderError::new(
+                "Data-type argument is required for data_as_input helper.",
+            ))?;
+    println!("value: {:?}", value);
+    match value {
+        Value::Null => out
+            .write("")
+            .map_err(|e| -> HandlebarsRenderError { e.into() }),
+        Value::Bool(b) => if *b {
+            out
+		.write("<input type=\"checkbox\" class=\"checkbox\" name=\"value\" value=\"true\" checked>")
+        } else {
+            out.write("<input type=\"checkbox\" class=\"checkbox\" name=\"value\" value=\"true\">")
+        }
+        .map_err(|e| -> HandlebarsRenderError { e.into() }),
+        Value::Number(n) => if let Some(n) = n.as_u64() {
+            out.write(&format!(
+                "<input type=\"number\" class=\"number\" name=\"value\" value=\"{}\">",
+                n
+            ))
+        } else if let Some(n) = n.as_i64() {
+            out.write(&format!(
+                "<input type=\"number\" class=\"number\" name=\"value\" value=\"{}\">",
+                n
+            ))
+        } else if let Some(n) = n.as_f64() {
+            out.write(&format!(
+                "<input type=\"number\" class=\"number\" name=\"value\" value=\"{}\">",
+                n
+            ))
+        } else {
+            out.write("")
+        }
+        .map_err(|e| -> HandlebarsRenderError { e.into() }),
+        Value::String(s) => out
+            .write(&format!(
+                "<input type=\"text\" class=\"text\" name=\"value\" value=\"{}\">",
+                s
+            ))
+            .map_err(|e| -> HandlebarsRenderError { e.into() }),
+        _ => Err(HandlebarsRenderError::new(
+            "Array and object-type data cannot be represented as input",
+        )),
+    }?;
+    Ok(())
+}
+
 pub trait Renderer: Clone + Send + Sync {
     fn render<T: Serialize + Send>(
         &self,
@@ -100,6 +161,7 @@ impl<'reg> HandlebarsRenderer<'reg> {
         for (key, val) in template_mapping.iter() {
             hbs.register_template_file(key, val)?;
         }
+        hbs.register_helper("data_as_input", Box::new(data_as_input));
         Ok(HandlebarsRenderer { hbs: Arc::new(hbs) })
     }
 }

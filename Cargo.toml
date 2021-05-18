@@ -27,5 +27,5 @@ mockall = "0.9.0"
 warp-sessions = "1.0.13"
 base64 = "0.13.0"
 sodiumoxide = "0.2.6"
-redact-crypto = { git = "https://github.com/pauwels-labs/redact-crypto.git", rev = "3d826fb7c17acdfe06c442a80da0de3a2805d18f" }
-redact-data = { git = "https://github.com/pauwels-labs/redact-data.git", rev = "ec6bfbc176914cf0397313d0ecb60e027ca04059" }
+redact-crypto = { git = "https://github.com/pauwels-labs/redact-crypto.git", rev = "d8726501c2d33ec0da0d0d6d2d69b8e7271ed86e" }
+redact-data = { git = "https://github.com/pauwels-labs/redact-data.git", rev = "d8d00db4d1051f7ae68ee72cc505fe46d404d95c" }

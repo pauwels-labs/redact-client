@@ -1,15 +1,14 @@
 mod render;
 mod routes;
 mod storage;
-mod sym_keys_storage;
 pub mod token;
 
-use redact_crypto::keys::{Key, SecretKeyExecutors};
+use redact_crypto::{Key, RedactKeyStorer};
+use redact_data::RedactDataStorer;
 use render::HandlebarsRenderer;
 use rust_config::Configurator;
 use serde::Serialize;
-use std::{collections::HashMap, convert::TryInto};
-use storage::{RedactDataStorer, RedactKeyStorer};
+use std::collections::HashMap;
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
@@ -99,6 +98,9 @@ async fn main() {
 
     // Start the server
     println!("starting server listening on ::{}", port);
-    let routes = health_route.or(get_routes).or(post_routes);
+    let routes = health_route
+        .or(get_routes)
+        .or(post_routes)
+        .with(warp::log("routes"));
     warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 }

@@ -2067,7 +2067,7 @@ dependencies = [
 [[package]]
 name = "redact-data"
 version = "0.1.0"
-source = "git+https://github.com/pauwels-labs/redact-data.git?rev=d8d00db4d1051f7ae68ee72cc505fe46d404d95c#d8d00db4d1051f7ae68ee72cc505fe46d404d95c"
+source = "git+https://github.com/pauwels-labs/redact-data.git?rev=19a35a418d6886283c8a1be968e6d3f0130faa88#19a35a418d6886283c8a1be968e6d3f0130faa88"
 dependencies = [
  "async-trait",
  "futures",

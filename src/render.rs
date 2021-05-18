@@ -2,9 +2,8 @@ use handlebars::{
     Context, Handlebars, Helper, Output, RenderContext, RenderError as HandlebarsRenderError,
     TemplateFileError,
 };
-use redact_data::Data;
+use redact_data::{Data, DataValue};
 use serde::Serialize;
-use serde_json::Value;
 use std::ops::Deref;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
@@ -79,51 +78,42 @@ fn data_as_input(
     out: &mut dyn Output,
 ) -> Result<(), HandlebarsRenderError> {
     // get parameter from helper or throw an error
-    let value =
-        h.param(0)
-        .and_then(|v| v.value().get("value"))
-            .ok_or(HandlebarsRenderError::new(
-                "Data-type argument is required for data_as_input helper.",
-            ))?;
-    println!("value: {:?}", value);
+    let value = h
+        .param(0)
+        .and_then(|v| {
+            Some(DataValue::from(
+                v.value().get("value")?.as_str()?.to_owned(),
+            ))
+        })
+        .ok_or_else(|| {
+            HandlebarsRenderError::new("Value provided as a DataValue in the data_as_input helper must be interpretable as a string-type")
+        })?;
     match value {
-        Value::Null => out
-            .write("")
-            .map_err(|e| -> HandlebarsRenderError { e.into() }),
-        Value::Bool(b) => if *b {
-            out
+        DataValue::Bool(ref b) => {
+            if *b {
+                out
 		.write("<input type=\"checkbox\" class=\"checkbox\" name=\"value\" value=\"true\" checked>")
-        } else {
-            out.write("<input type=\"checkbox\" class=\"checkbox\" name=\"value\" value=\"true\">")
+            } else {
+                out.write(
+                    "<input type=\"checkbox\" class=\"checkbox\" name=\"value\" value=\"true\">",
+                )
+            }
         }
-        .map_err(|e| -> HandlebarsRenderError { e.into() }),
-        Value::Number(n) => if let Some(n) = n.as_u64() {
-            out.write(&format!(
-                "<input type=\"number\" class=\"number\" name=\"value\" value=\"{}\">",
-                n
-            ))
-        } else if let Some(n) = n.as_i64() {
-            out.write(&format!(
-                "<input type=\"number\" class=\"number\" name=\"value\" value=\"{}\">",
-                n
-            ))
-        } else if let Some(n) = n.as_f64() {
-            out.write(&format!(
-                "<input type=\"number\" class=\"number\" name=\"value\" value=\"{}\">",
-                n
-            ))
-        } else {
-            out.write("")
-        }
-        .map_err(|e| -> HandlebarsRenderError { e.into() }),
-        Value::String(s) => out
-            .write(&format!(
-                "<input type=\"text\" class=\"text\" name=\"value\" value=\"{}\">",
-                s
-            ))
-            .map_err(|e| -> HandlebarsRenderError { e.into() }),
-        _ => Err(HandlebarsRenderError::new(
-            "Array and object-type data cannot be represented as input",
+        DataValue::U64(n) => out.write(&format!(
+            "<input type=\"number\" class=\"number\" name=\"value\" min=\"0\" value=\"{}\">",
+            n
+        )),
+        DataValue::I64(n) => out.write(&format!(
+            "<input type=\"number\" class=\"number\" name=\"value\" value=\"{}\">",
+            n
+        )),
+        DataValue::F64(n) => out.write(&format!(
+            "<input type=\"number\" class=\"number\" name=\"value\" step=\"any\" value=\"{}\">",
+            n
+        )),
+        DataValue::String(s) => out.write(&format!(
+            "<input type=\"text\" class=\"text\" name=\"value\" value=\"{}\">",
+            s
         )),
     }?;
     Ok(())

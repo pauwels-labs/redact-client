@@ -74,25 +74,6 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
                     Some::<String>(session_token) => {
                         if session_token != path_params.token {
                             Err(IframeTokensDoNotMatchRejection)?
-                            // Ok::<_, Rejection>((
-                            //     Rendered::new(
-                            //         render_engine,
-                            //         RenderTemplate {
-                            //             name: "unsecure",
-                            //             value: SecureTemplateValues {
-                            //                 data: None,
-                            //                 path: None,
-                            //                 token: None,
-                            //                 css: query_params.css,
-                            //                 edit: query_params.edit,
-                            //             },
-                            //         },
-                            //     )?,
-                            //     data,
-                            //     path_params,
-                            //     "".to_owned(),
-                            //     session_with_store,
-                            // ))
                         } else {
                             // let mut encrypted_by = None;
                             // if let Some(edit) = query_params.edit {
@@ -135,26 +116,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
                                 })?
                         }
                     }
-                    None => Err(SessionTokenNotFoundRejection)?
-		    // 	Ok::<_, Rejection>((
-                    //     Rendered::new(
-                    //         render_engine,
-                    //         RenderTemplate {
-                    //             name: "secure",
-                    //             value: SecureTemplateValues {
-                    //                 data: None,
-                    //                 path: None,
-                    //                 token: None,
-                    //                 css: query_params.css,
-                    //                 edit: query_params.edit,
-                    //             },
-                    //         },
-                    //     )?,
-                    //     data,
-                    //     path_params,
-                    //     "".to_owned(),
-                    //     session_with_store,
-                    // )),
+                    None => Err(SessionTokenNotFoundRejection)?,
                 }
             },
         )

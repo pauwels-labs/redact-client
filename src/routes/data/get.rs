@@ -227,47 +227,6 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                             session_with_store,
                         ))
                     }
-                    // |mut data_collection| match data_collection.data.pop() {
-                    //     Some(data) => Ok::<_, Rejection>((
-                    //         Rendered::new(
-                    //             render_engine,
-                    //             RenderTemplate {
-                    //                 name: "secure",
-                    //                 value: SecureTemplateValues {
-                    //                     data: Some(data),
-                    //                     token: Some(token),
-                    //                     css: query_params.css,
-                    //                     edit: query_params.edit,
-                    //                 },
-                    //             },
-                    //         ).map_err(|e| Err(warp::reject::custom(e)))?,
-                    //         path_params,
-                    //         query_params,
-                    //         token,
-                    //         session_with_store,
-                    //     )),
-                    //     None =>
-                    // 	    Err(warp::reject::custom(DataNotFoundRejection))
-                    // Ok::<_, Rejection>((
-                    //     Rendered::new(
-                    //         render_engine,
-                    //         RenderTemplate {
-                    //             name: "secure",
-                    //             value: SecureTemplateValues {
-                    //                 data: None,
-                    //                 token: None,
-                    //                 css: query_params.css,
-                    //                 edit: query_params.edit,
-                    //             },
-                    //         },
-                    //     )?,
-                    //     path_params,
-                    //     query_params,
-                    //     token,
-                    //     session_with_store,
-                    // )),
-                    //     },
-                    // )
                 } else {
                     // Non-collection request
                     let data = data_store
@@ -312,41 +271,6 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                 //     }
                 // }
                 //             template_values.encrypted_by = encrypted_by;
-
-                //             Ok::<_, Rejection>((
-                //                 Rendered::new(
-                //                     render_engine,
-                //                     RenderTemplate {
-                //                         name: "secure",
-                //                         value: template_values,
-                //                     },
-                //                 )?,
-                //                 path_params,
-                //                 query_params,
-                //                 token.clone(),
-                //                 session_with_store,
-                //             ))
-
-                //             // ----- end repository code -----
-                //         }
-                //     }
-                //     None => {
-                //         template_values.data = "".to_string();
-                //         Ok::<_, Rejection>((
-                //             Rendered::new(
-                //                 render_engine,
-                //                 RenderTemplate {
-                //                     name: "secure",
-                //                     value: template_values,
-                //                 },
-                //             )?,
-                //             path_params,
-                //             query_params,
-                //             token,
-                //             session_with_store,
-                //         ))
-                //     }
-                // }
             },
         )
         .untuple_one()

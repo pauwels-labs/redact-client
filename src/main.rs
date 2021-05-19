@@ -1,6 +1,6 @@
 mod render;
 mod routes;
-pub mod token;
+mod token;
 
 use redact_crypto::{Key, RedactKeyStorer};
 use redact_data::RedactDataStorer;

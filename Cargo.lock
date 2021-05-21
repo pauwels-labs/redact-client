@@ -2054,10 +2054,11 @@ dependencies = [
 [[package]]
 name = "redact-crypto"
 version = "0.1.0"
-source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=d8726501c2d33ec0da0d0d6d2d69b8e7271ed86e#d8726501c2d33ec0da0d0d6d2d69b8e7271ed86e"
+source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=6385910e0aa09a63df439a1f8522e12a4bf22276#6385910e0aa09a63df439a1f8522e12a4bf22276"
 dependencies = [
  "async-trait",
  "futures",
+ "mockall",
  "mongodb",
  "reqwest 0.11.0",
  "serde 1.0.125",
@@ -2067,10 +2068,11 @@ dependencies = [
 [[package]]
 name = "redact-data"
 version = "0.1.0"
-source = "git+https://github.com/pauwels-labs/redact-data.git?rev=19a35a418d6886283c8a1be968e6d3f0130faa88#19a35a418d6886283c8a1be968e6d3f0130faa88"
+source = "git+https://github.com/pauwels-labs/redact-data.git?rev=a93a08949b32670562c6e8e075c14b39ab3581c2#a93a08949b32670562c6e8e075c14b39ab3581c2"
 dependencies = [
  "async-trait",
  "futures",
+ "mockall",
  "mongodb",
  "reqwest 0.11.0",
  "serde 1.0.125",

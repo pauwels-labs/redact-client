@@ -1,5 +1,5 @@
 use crate::{
-    render::{RenderTemplate, Rendered, Renderer, SecureTemplateValues},
+    render::{RenderTemplate, Rendered, Renderer, SecureTemplateValues, UnsecureTemplateValues},
     routes::{
         DataStorageErrorRejection, IframeTokensDoNotMatchRejection, SessionTokenNotFoundRejection,
     },
@@ -8,7 +8,6 @@ use crate::{
 use redact_crypto::KeyStorer;
 use redact_data::DataStorer;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{
     self, CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
@@ -70,35 +69,43 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R| async move {
-                let mut template_values = HashMap::new();
-                template_values.insert("path".to_string(), path_params.path.clone());
-                template_values.insert("token".to_string(), token.clone());
+                // let mut template_values = HashMap::new();
+                // template_values.insert("path".to_string(), path_params.path.clone());
+                // template_values.insert("token".to_string(), token.clone());
 
-                match query_params.css {
-                    Some(css) => template_values.insert("css".to_string(), css),
-                    _ => None,
-                };
-                match query_params.edit {
-                    Some(edit) => template_values.insert("edit".to_string(), edit.to_string()),
-                    _ => None,
-                };
-                match query_params.index {
-                    Some(index) => template_values.insert("index".to_string(), index.to_string()),
-                    _ => None,
-                };
-                match query_params.fetch_id {
-                    Some(fetch_id) => {
-                        template_values.insert("fetch_id".to_string(), fetch_id.to_string())
-                    }
-                    _ => None,
-                };
+                // match query_params.css {
+                //     Some(css) => template_values.insert("css".to_string(), css),
+                //     _ => None,
+                // };
+                // match query_params.edit {
+                //     Some(edit) => template_values.insert("edit".to_string(), edit.to_string()),
+                //     _ => None,
+                // };
+                // match query_params.index {
+                //     Some(index) => template_values.insert("index".to_string(), index.to_string()),
+                //     _ => None,
+                // };
+                // match query_params.fetch_id {
+                //     Some(fetch_id) => {
+                //         template_values.insert("fetch_id".to_string(), fetch_id.to_string())
+                //     }
+                //     _ => None,
+                // };
 
+                let utv = UnsecureTemplateValues {
+                    path: path_params.path.clone(),
+                    token: token.clone(),
+                    css: query_params.css,
+                    edit: query_params.edit,
+                    index: query_params.index,
+                    fetch_id: query_params.fetch_id,
+                };
                 Ok::<_, Rejection>((
                     Rendered::new(
                         render_engine,
                         RenderTemplate {
                             name: "unsecure",
-                            value: template_values,
+                            value: utv,
                         },
                     )?,
                     path_params,
@@ -117,11 +124,8 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                     .session
                     .insert("token", token.clone())
                     .map_err(|_| warp::reject())?;
-                session_with_store.cookie_options.path = Some(format!(
-                    "/data/{}/{}",
-                    path_params.path.clone(),
-                    token.clone()
-                ));
+                session_with_store.cookie_options.path =
+                    Some(format!("/data/{}/{}", path_params.path, token));
 
                 Ok::<_, Rejection>((reply, session_with_store))
             },
@@ -135,7 +139,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
     render_engine: R,
     token_generator: T,
     data_store: D,
-    keys_store: K,
+    key_store: K,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::any()
         .and(
@@ -159,7 +163,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
         .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
         .and(warp::any().map(move || render_engine.clone()))
         .and(warp::any().map(move || data_store.clone()))
-        .and(warp::any().map(move || keys_store.clone()))
+        .and(warp::any().map(move || key_store.clone()))
         .and_then(
             move |path_params: WithTokenPathParams,
                   query_params: WithTokenQueryParams,
@@ -167,7 +171,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                   token: String,
                   render_engine: R,
                   data_store: D,
-                  keys_store: K| async move {
+                  key_store: K| async move {
                 if let Some(session_token) = session_with_store.session.get::<String>("token") {
                     if session_token != path_params.token {
                         Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
@@ -191,7 +195,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                                 name: "secure",
                                 value: SecureTemplateValues {
                                     data: Some(data.clone()),
-                                    path: Some(data.path.to_string()),
+                                    path: Some(data.path()),
                                     token: Some(token.clone()),
                                     css: query_params.css,
                                     edit: query_params.edit,
@@ -240,7 +244,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                             name: "secure",
                             value: SecureTemplateValues {
                                 data: Some(data.clone()),
-                                path: Some(data.path.to_string()),
+                                path: Some(data.path()),
                                 token: Some(token.clone()),
                                 css: query_params.css,
                                 edit: query_params.edit,
@@ -321,18 +325,17 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
 #[cfg(test)]
 mod tests {
     mod with_token {
-        use crate::render::{tests::MockRenderer, RenderTemplate};
+        use crate::render::{tests::MockRenderer, RenderTemplate, SecureTemplateValues};
         use crate::routes::data::get;
-        use crate::storage::{tests::MockStorer, Data};
         use crate::token::tests::MockTokenGenerator;
         use async_trait::async_trait;
         use mockall::predicate::*;
         use mockall::*;
+        use redact_crypto::storage::tests::MockKeyStorer;
+        use redact_data::{storage::tests::MockDataStorer, Data};
         use serde::Serialize;
-        use serde_json::json;
 
         use std::{
-            collections::HashMap,
             fmt::{self, Debug, Formatter},
             sync::Arc,
         };
@@ -406,11 +409,17 @@ mod tests {
             let mut render_engine = MockRenderer::new();
             render_engine
                 .expect_render()
-                .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
-                    let mut expected_value = HashMap::new();
-                    expected_value.insert("path".to_string(), ".testKey.".to_string());
-                    expected_value.insert("data".to_owned(), "testValue".to_owned());
-                    expected_value.insert("data_type".to_owned(), "string".to_owned());
+                .withf(move |template: &RenderTemplate<SecureTemplateValues>| {
+                    let expected_value = SecureTemplateValues {
+                        data: Some(Data::new(".testKey.", "someval".into(), None)),
+                        path: Some(".testKey".to_owned()),
+                        token: Some(
+                            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
+                                .to_owned(),
+                        ),
+                        css: None,
+                        edit: None,
+                    };
                     template.value == expected_value
                 })
                 .times(1)
@@ -422,29 +431,27 @@ mod tests {
                 .times(1)
                 .returning(|| {
                     Ok(
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
+                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
                             .to_owned(),
                     )
                 });
 
-            let mut storer = MockStorer::new();
-            storer
+            let mut data_storer = MockDataStorer::new();
+            data_storer
                 .expect_get()
                 .times(1)
                 .with(predicate::eq(".testKey."))
-                .returning(|_| {
-                    Ok(Data {
-                        data_type: "string".to_owned(),
-                        path: ".testKey.".to_owned(),
-                        value: json!("testValue"),
-                    })
-                });
+                .returning(|_| Ok(Data::new(".testKey.", "someval".into(), None)));
+
+            let mut key_storer = MockKeyStorer::new();
+            key_storer.expect_get().times(0);
 
             let with_token_filter = get::with_token(
                 session_store,
                 Arc::new(render_engine),
                 Arc::new(token_generator),
-                Arc::new(storer),
+                Arc::new(data_storer),
+                Arc::new(key_storer),
             );
 
             let res = warp::test::request()
@@ -458,10 +465,9 @@ mod tests {
     }
 
     mod without_token {
-        use crate::render::{tests::MockRenderer, RenderTemplate};
+        use crate::render::{tests::MockRenderer, RenderTemplate, UnsecureTemplateValues};
         use crate::routes::data::get;
         use crate::token::tests::MockTokenGenerator;
-        use std::collections::HashMap;
         use std::sync::Arc;
         use warp_sessions::MemoryStore;
 
@@ -471,14 +477,17 @@ mod tests {
             let mut render_engine = MockRenderer::new();
             render_engine
                 .expect_render()
-                .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
-                    let mut expected_value = HashMap::new();
-                    expected_value.insert("path".to_string(), ".testKey.".to_string());
-                    expected_value.insert(
-                        "token".to_string(),
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
-                            .to_string(),
-                    );
+                .withf(move |template: &RenderTemplate<UnsecureTemplateValues>| {
+                    let expected_value = UnsecureTemplateValues {
+                        path: ".testKey.".to_owned(),
+                        token: "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
+                            .to_owned(),
+                        css: None,
+                        edit: None,
+                        index: None,
+                        fetch_id: None,
+                    };
+
                     template.value == expected_value
                 })
                 .times(1)
@@ -514,15 +523,17 @@ mod tests {
             let mut render_engine = MockRenderer::new();
             render_engine
                 .expect_render()
-                .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
-                    let mut expected_value = HashMap::new();
-                    expected_value.insert("path".to_owned(), ".testKey.".to_owned());
-                    expected_value.insert(
-                        "token".to_owned(),
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
+                .withf(move |template: &RenderTemplate<UnsecureTemplateValues>| {
+                    let expected_value = UnsecureTemplateValues {
+                        path: ".testKey.".to_owned(),
+                        token: "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
                             .to_owned(),
-                    );
-                    expected_value.insert("css".to_owned(), "p { color: red; }".to_owned());
+                        css: Some("p { color: red; }".to_owned()),
+                        edit: None,
+                        index: None,
+                        fetch_id: None,
+                    };
+
                     template.value == expected_value
                 })
                 .times(1)
@@ -558,15 +569,16 @@ mod tests {
             let mut render_engine = MockRenderer::new();
             render_engine
                 .expect_render()
-                .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
-                    let mut expected_value = HashMap::new();
-                    expected_value.insert("path".to_owned(), ".testKey.".to_owned());
-                    expected_value.insert(
-                        "token".to_owned(),
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
+                .withf(move |template: &RenderTemplate<UnsecureTemplateValues>| {
+                    let expected_value = UnsecureTemplateValues {
+                        path: ".testKey.".to_owned(),
+                        token: "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
                             .to_owned(),
-                    );
-                    expected_value.insert("edit".to_owned(), "true".to_owned());
+                        css: None,
+                        edit: Some(true),
+                        index: None,
+                        fetch_id: None,
+                    };
                     template.value == expected_value
                 })
                 .times(1)
@@ -602,15 +614,16 @@ mod tests {
             let mut render_engine = MockRenderer::new();
             render_engine
                 .expect_render()
-                .withf(move |template: &RenderTemplate<HashMap<String, String>>| {
-                    let mut expected_value = HashMap::new();
-                    expected_value.insert("path".to_owned(), ".testKey.".to_owned());
-                    expected_value.insert(
-                        "token".to_owned(),
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
+                .withf(move |template: &RenderTemplate<UnsecureTemplateValues>| {
+                    let expected_value = UnsecureTemplateValues {
+                        path: ".testKey.".to_owned(),
+                        token: "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
                             .to_owned(),
-                    );
-                    expected_value.insert("edit".to_owned(), "false".to_owned());
+                        css: None,
+                        edit: Some(false),
+                        index: None,
+                        fetch_id: None,
+                    };
                     template.value == expected_value
                 })
                 .times(1)

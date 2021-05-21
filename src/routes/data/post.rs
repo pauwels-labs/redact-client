@@ -102,7 +102,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
                                                 name: "secure",
                                                 value: SecureTemplateValues {
                                                     data: Some(data.clone()),
-                                                    path: Some(data.path.to_string()),
+                                                    path: Some(data.path().to_string()),
                                                     token: Some(token.clone()),
                                                     css: query_params.css,
                                                     edit: query_params.edit,

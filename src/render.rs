@@ -4,6 +4,7 @@ use handlebars::{
 };
 use redact_data::{Data, DataValue};
 use serde::Serialize;
+use std::cmp::{Eq, PartialEq};
 use std::ops::Deref;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
@@ -19,7 +20,7 @@ pub enum RenderError {
 
 impl Reject for RenderError {}
 
-#[derive(Serialize, Debug, Default)]
+#[derive(Serialize, Debug, Default, PartialEq, Eq)]
 pub struct UnsecureTemplateValues {
     pub path: String,
     pub token: String,
@@ -29,7 +30,7 @@ pub struct UnsecureTemplateValues {
     pub fetch_id: Option<String>,
 }
 
-#[derive(Serialize, Debug, Default)]
+#[derive(Serialize, Debug, Default, PartialEq)]
 pub struct SecureTemplateValues {
     pub data: Option<Data>,
     pub path: Option<String>,
@@ -54,7 +55,7 @@ pub struct Rendered {
 }
 
 impl Rendered {
-    pub fn new<E: Renderer, T: Serialize + Send>(
+    pub fn new<E: Renderer<T>, T: Serialize + Send>(
         render_engine: E,
         render_template: RenderTemplate<T>,
     ) -> Result<Rendered, RenderError> {
@@ -82,7 +83,7 @@ fn data_as_input(
         .param(0)
         .and_then(|v| {
             Some(DataValue::from(
-                v.value().get("value")?.as_str()?.to_owned(),
+                v.value().get("value")?.as_str()?,
             ))
         })
         .ok_or_else(|| {
@@ -119,21 +120,16 @@ fn data_as_input(
     Ok(())
 }
 
-pub trait Renderer: Clone + Send + Sync {
-    fn render<T: Serialize + Send>(
-        &self,
-        template: RenderTemplate<T>,
-    ) -> Result<String, RenderError>;
+pub trait Renderer<T: Serialize + Send>: Clone + Send + Sync {
+    fn render(&self, template: RenderTemplate<T>) -> Result<String, RenderError>;
 }
 
-impl<U> Renderer for Arc<U>
+impl<U, T> Renderer<T> for Arc<U>
 where
-    U: Renderer,
+    U: Renderer<T>,
+    T: Serialize + Send,
 {
-    fn render<T: Serialize + Send>(
-        &self,
-        template: RenderTemplate<T>,
-    ) -> Result<String, RenderError> {
+    fn render(&self, template: RenderTemplate<T>) -> Result<String, RenderError> {
         self.deref().render(template)
     }
 }
@@ -156,11 +152,8 @@ impl<'reg> HandlebarsRenderer<'reg> {
     }
 }
 
-impl<'reg> Renderer for HandlebarsRenderer<'reg> {
-    fn render<T: Serialize + Send>(
-        &self,
-        template: RenderTemplate<T>,
-    ) -> Result<String, RenderError> {
+impl<'reg, T: Serialize + Send> Renderer<T> for HandlebarsRenderer<'reg> {
+    fn render(&self, template: RenderTemplate<T>) -> Result<String, RenderError> {
         self.hbs
             .render(template.name, &template.value)
             .map_err(|source| RenderError::RenderError { source })
@@ -173,11 +166,10 @@ pub mod tests {
     use mockall::predicate::*;
     use mockall::*;
     use serde::Serialize;
-    use std::collections::HashMap;
 
     mock! {
     pub Renderer {
-            pub fn render(&self, template: RenderTemplate<HashMap<String, String>>) -> Result<String, RenderError>;
+            pub fn render<T: Serialize + Send>(&self, template: RenderTemplate<T>) -> Result<String, RenderError>;
     }
     impl Clone for Renderer {
             fn clone(&self) -> Self;
@@ -185,16 +177,13 @@ pub mod tests {
     }
 
     impl Renderer for MockRenderer {
-        fn render<T: Serialize + Send>(
+        fn render<T: Serialize + Send + 'static>(
             &self,
             template: RenderTemplate<T>,
         ) -> Result<String, RenderError> {
-            let value_str = serde_json::to_string(&template.value).unwrap();
-            let value_hm: HashMap<String, String> = serde_json::from_str(&value_str).unwrap();
-
             let typed_template = RenderTemplate {
                 name: template.name,
-                value: value_hm,
+                value: template.value,
             };
             self.render(typed_template)
         }

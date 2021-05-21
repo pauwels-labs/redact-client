@@ -20,6 +20,12 @@ pub enum RenderError {
 
 impl Reject for RenderError {}
 
+#[derive(Serialize, Debug, PartialEq)]
+pub enum TemplateValues {
+    Unsecure(UnsecureTemplateValues),
+    Secure(SecureTemplateValues),
+}
+
 #[derive(Serialize, Debug, Default, PartialEq, Eq)]
 pub struct UnsecureTemplateValues {
     pub path: String,
@@ -45,9 +51,9 @@ impl std::convert::From<TemplateFileError> for RenderError {
     }
 }
 
-pub struct RenderTemplate<T: Serialize + Send> {
+pub struct RenderTemplate {
     pub name: &'static str,
-    pub value: T,
+    pub value: TemplateValues,
 }
 
 pub struct Rendered {
@@ -55,9 +61,9 @@ pub struct Rendered {
 }
 
 impl Rendered {
-    pub fn new<E: Renderer<T>, T: Serialize + Send>(
+    pub fn new<E: Renderer>(
         render_engine: E,
-        render_template: RenderTemplate<T>,
+        render_template: RenderTemplate,
     ) -> Result<Rendered, RenderError> {
         let reply = warp::reply::html(render_engine.render(render_template)?);
 
@@ -120,16 +126,15 @@ fn data_as_input(
     Ok(())
 }
 
-pub trait Renderer<T: Serialize + Send>: Clone + Send + Sync {
-    fn render(&self, template: RenderTemplate<T>) -> Result<String, RenderError>;
+pub trait Renderer: Clone + Send + Sync {
+    fn render(&self, template: RenderTemplate) -> Result<String, RenderError>;
 }
 
-impl<U, T> Renderer<T> for Arc<U>
+impl<U> Renderer for Arc<U>
 where
-    U: Renderer<T>,
-    T: Serialize + Send,
+    U: Renderer,
 {
-    fn render(&self, template: RenderTemplate<T>) -> Result<String, RenderError> {
+    fn render(&self, template: RenderTemplate) -> Result<String, RenderError> {
         self.deref().render(template)
     }
 }
@@ -152,8 +157,8 @@ impl<'reg> HandlebarsRenderer<'reg> {
     }
 }
 
-impl<'reg, T: Serialize + Send> Renderer<T> for HandlebarsRenderer<'reg> {
-    fn render(&self, template: RenderTemplate<T>) -> Result<String, RenderError> {
+impl<'reg> Renderer for HandlebarsRenderer<'reg> {
+    fn render(&self, template: RenderTemplate) -> Result<String, RenderError> {
         self.hbs
             .render(template.name, &template.value)
             .map_err(|source| RenderError::RenderError { source })
@@ -165,11 +170,10 @@ pub mod tests {
     use super::{RenderError, RenderTemplate, Renderer};
     use mockall::predicate::*;
     use mockall::*;
-    use serde::Serialize;
 
     mock! {
     pub Renderer {
-            pub fn render<T: Serialize + Send>(&self, template: RenderTemplate<T>) -> Result<String, RenderError>;
+            pub fn render(&self, template: RenderTemplate) -> Result<String, RenderError>;
     }
     impl Clone for Renderer {
             fn clone(&self) -> Self;
@@ -177,15 +181,11 @@ pub mod tests {
     }
 
     impl Renderer for MockRenderer {
-        fn render<T: Serialize + Send + 'static>(
-            &self,
-            template: RenderTemplate<T>,
-        ) -> Result<String, RenderError> {
-            let typed_template = RenderTemplate {
+        fn render(&self, template: RenderTemplate) -> Result<String, RenderError> {
+            self.render(RenderTemplate {
                 name: template.name,
                 value: template.value,
-            };
-            self.render(typed_template)
+            })
         }
     }
 }

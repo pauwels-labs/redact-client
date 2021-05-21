@@ -1,5 +1,5 @@
 use crate::{
-    render::{RenderTemplate, Rendered, Renderer, SecureTemplateValues},
+    render::{RenderTemplate, Rendered, Renderer, SecureTemplateValues, TemplateValues},
     routes::{
         DataStorageErrorRejection, IframeTokensDoNotMatchRejection, SerializationRejection,
         SessionTokenNotFoundRejection,
@@ -100,13 +100,15 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
                                             render_engine,
                                             RenderTemplate {
                                                 name: "secure",
-                                                value: SecureTemplateValues {
-                                                    data: Some(data.clone()),
-                                                    path: Some(data.path().to_string()),
-                                                    token: Some(token.clone()),
-                                                    css: query_params.css,
-                                                    edit: query_params.edit,
-                                                },
+                                                value: TemplateValues::Secure(
+                                                    SecureTemplateValues {
+                                                        data: Some(data.clone()),
+                                                        path: Some(data.path().to_string()),
+                                                        token: Some(token.clone()),
+                                                        css: query_params.css,
+                                                        edit: query_params.edit,
+                                                    },
+                                                ),
                                             },
                                         )?,
                                         path_params,

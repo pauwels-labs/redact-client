@@ -1,5 +1,8 @@
 use crate::{
-    render::{RenderTemplate, Rendered, Renderer, SecureTemplateValues, UnsecureTemplateValues},
+    render::{
+        RenderTemplate, Rendered, Renderer, SecureTemplateValues, TemplateValues,
+        UnsecureTemplateValues,
+    },
     routes::{
         DataStorageErrorRejection, IframeTokensDoNotMatchRejection, SessionTokenNotFoundRejection,
     },
@@ -105,7 +108,7 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                         render_engine,
                         RenderTemplate {
                             name: "unsecure",
-                            value: utv,
+                            value: TemplateValues::Unsecure(utv),
                         },
                     )?,
                     path_params,
@@ -193,13 +196,13 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                             render_engine,
                             RenderTemplate {
                                 name: "secure",
-                                value: SecureTemplateValues {
+                                value: TemplateValues::Secure(SecureTemplateValues {
                                     data: Some(data.clone()),
                                     path: Some(data.path()),
                                     token: Some(token.clone()),
                                     css: query_params.css,
                                     edit: query_params.edit,
-                                },
+                                }),
                             },
                         )?;
 
@@ -216,13 +219,13 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                                 render_engine,
                                 RenderTemplate {
                                     name: "secure",
-                                    value: SecureTemplateValues {
+                                    value: TemplateValues::Secure(SecureTemplateValues {
                                         data: None,
                                         path: None,
                                         token: None,
                                         css: query_params.css,
                                         edit: query_params.edit,
-                                    },
+                                    }),
                                 },
                             )?,
                             path_params,
@@ -242,13 +245,13 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                         render_engine,
                         RenderTemplate {
                             name: "secure",
-                            value: SecureTemplateValues {
+                            value: TemplateValues::Secure(SecureTemplateValues {
                                 data: Some(data.clone()),
                                 path: Some(data.path()),
                                 token: Some(token.clone()),
                                 css: query_params.css,
                                 edit: query_params.edit,
-                            },
+                            }),
                         },
                     )?;
 
@@ -325,7 +328,9 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
 #[cfg(test)]
 mod tests {
     mod with_token {
-        use crate::render::{tests::MockRenderer, RenderTemplate, SecureTemplateValues};
+        use crate::render::{
+            tests::MockRenderer, RenderTemplate, SecureTemplateValues, TemplateValues,
+        };
         use crate::routes::data::get;
         use crate::token::tests::MockTokenGenerator;
         use async_trait::async_trait;
@@ -409,17 +414,17 @@ mod tests {
             let mut render_engine = MockRenderer::new();
             render_engine
                 .expect_render()
-                .withf(move |template: &RenderTemplate<SecureTemplateValues>| {
-                    let expected_value = SecureTemplateValues {
+                .withf(move |template: &RenderTemplate| {
+                    let expected_value = TemplateValues::Secure(SecureTemplateValues {
                         data: Some(Data::new(".testKey.", "someval".into(), None)),
-                        path: Some(".testKey".to_owned()),
+                        path: Some(".testKey.".to_owned()),
                         token: Some(
                             "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
                                 .to_owned(),
                         ),
                         css: None,
                         edit: None,
-                    };
+                    });
                     template.value == expected_value
                 })
                 .times(1)
@@ -465,7 +470,9 @@ mod tests {
     }
 
     mod without_token {
-        use crate::render::{tests::MockRenderer, RenderTemplate, UnsecureTemplateValues};
+        use crate::render::{
+            tests::MockRenderer, RenderTemplate, TemplateValues, UnsecureTemplateValues,
+        };
         use crate::routes::data::get;
         use crate::token::tests::MockTokenGenerator;
         use std::sync::Arc;
@@ -477,8 +484,8 @@ mod tests {
             let mut render_engine = MockRenderer::new();
             render_engine
                 .expect_render()
-                .withf(move |template: &RenderTemplate<UnsecureTemplateValues>| {
-                    let expected_value = UnsecureTemplateValues {
+                .withf(move |template: &RenderTemplate| {
+                    let expected_value = TemplateValues::Unsecure(UnsecureTemplateValues {
                         path: ".testKey.".to_owned(),
                         token: "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
                             .to_owned(),
@@ -486,7 +493,7 @@ mod tests {
                         edit: None,
                         index: None,
                         fetch_id: None,
-                    };
+                    });
 
                     template.value == expected_value
                 })
@@ -523,8 +530,8 @@ mod tests {
             let mut render_engine = MockRenderer::new();
             render_engine
                 .expect_render()
-                .withf(move |template: &RenderTemplate<UnsecureTemplateValues>| {
-                    let expected_value = UnsecureTemplateValues {
+                .withf(move |template: &RenderTemplate| {
+                    let expected_value = TemplateValues::Unsecure(UnsecureTemplateValues {
                         path: ".testKey.".to_owned(),
                         token: "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
                             .to_owned(),
@@ -532,7 +539,7 @@ mod tests {
                         edit: None,
                         index: None,
                         fetch_id: None,
-                    };
+                    });
 
                     template.value == expected_value
                 })
@@ -569,8 +576,8 @@ mod tests {
             let mut render_engine = MockRenderer::new();
             render_engine
                 .expect_render()
-                .withf(move |template: &RenderTemplate<UnsecureTemplateValues>| {
-                    let expected_value = UnsecureTemplateValues {
+                .withf(move |template: &RenderTemplate| {
+                    let expected_value = TemplateValues::Unsecure(UnsecureTemplateValues {
                         path: ".testKey.".to_owned(),
                         token: "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
                             .to_owned(),
@@ -578,7 +585,7 @@ mod tests {
                         edit: Some(true),
                         index: None,
                         fetch_id: None,
-                    };
+                    });
                     template.value == expected_value
                 })
                 .times(1)
@@ -614,8 +621,8 @@ mod tests {
             let mut render_engine = MockRenderer::new();
             render_engine
                 .expect_render()
-                .withf(move |template: &RenderTemplate<UnsecureTemplateValues>| {
-                    let expected_value = UnsecureTemplateValues {
+                .withf(move |template: &RenderTemplate| {
+                    let expected_value = TemplateValues::Unsecure(UnsecureTemplateValues {
                         path: ".testKey.".to_owned(),
                         token: "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
                             .to_owned(),
@@ -623,7 +630,7 @@ mod tests {
                         edit: Some(false),
                         index: None,
                         fetch_id: None,
-                    };
+                    });
                     template.value == expected_value
                 })
                 .times(1)

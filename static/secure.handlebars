@@ -1,21 +1,21 @@
 <html>
   <head>
     <style>
-      {{ css }}
+      {{ Secure.css }}
     </style>
   </head>
   <body>
-    {{ #if edit }}
-    <form action="/data/{{ token }}?css={{ css }}&edit={{ edit }}" method="POST">
-      <input type="hidden" value="{{ path }}" id="path" name="path">
-      {{ data_as_input data }}
-      {{ #each key_names }}
+    {{ #if Secure.edit }}
+    <form action="/data/{{ Secure.token }}?css={{ Secure.css }}&edit={{ Secure.edit }}" method="POST">
+      <input type="hidden" value="{{ Secure.path }}" id="path" name="path">
+      {{ data_as_input Secure.data }}
+      {{ #each Secure.key_names }}
       <label class="checkbox-label"><input type="checkbox" class="checkbox" name="encryptedby" value="{{ this }}">{{ this }}</label><br/>
       {{ /each }}
       <input type="submit" value="Submit" name="submit" id="submit">
     </form>
     {{ else }}
-    <p>{{ data.value }}</p>
+    <p>{{ Secure.data.value }}</p>
     {{ /if }}
   </body>
 </html>

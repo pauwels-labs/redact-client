@@ -71,12 +71,34 @@ spec:
             cp /tekton/creds-secrets/tekton-container-registry-auth/.dockerconfigjson /kaniko/.docker/config.json
             mkdir /kaniko/cache
             /kaniko/executor $KANIKO_FLAGS --context=/workspace/source --dockerfile=Dockerfile.dev --destination=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME:$VERSION-alpine3.13 --cache=true --cache-dir=/kaniko/cache --cache-repo=$DOCKER_REGISTRY/$DOCKER_REGISTRY_ORG/$APP_NAME/cache
+        - image: 274295908850.dkr.ecr.eu-west-1.amazonaws.com/pauwels-labs/toml-editor:0.1.0
+          name: cargo-toml-version-update
+          resources: {}
+          script: |
+            #!/bin/sh
+            source .jx/variables.sh
+            # When you write directly to Cargo.toml, it weirdly appends to the file
+            toml set Cargo.toml package.version "$VERSION" > Cargo.toml.new
+            mv Cargo.toml.new Cargo.toml
         - name: promote-changelog
           resources: {}
+        - image: 274295908850.dkr.ecr.eu-west-1.amazonaws.com/pauwels-labs/toml-editor:0.1.0
+          name: cargo-publish
+          volumeMounts:
+          - name: crates-io-token
+            mountPath: /usr/local/cargo/credentials
+            subPath: credentials
+          resources: {}
+          script: |
+            #!/bin/sh
+            cargo publish
         volumes:
         - name: coveralls-repo-tokens
           secret:
             secretName: coveralls-repo-tokens
+        - name: crates-io-token
+          secret:
+            secretName: crates-io-token
   podTemplate: {}
   serviceAccountName: tekton-bot
   timeout: 240h0m0s

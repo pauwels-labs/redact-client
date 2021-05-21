@@ -1,8 +1,25 @@
 [package]
 name = "redact-client"
 version = "0.1.0"
-authors = ["ajp <8890201+ajpauwels@users.noreply.github.com>"]
+authors = ["Alexandre Pauwels <8890201+ajpauwels@users.noreply.github.com>"]
 edition = "2018"
+license-file = "LICENSE"
+description = "Receives request for private data and decrypts it to display securely in browser"
+documentation = "https://docs.rs/redact-client"
+repository = "https://github.com/pauwels-labs/redact-client.git"
+readme = "README.md"
+exclude = [
+        ".dockerignore",
+        ".git",
+        ".gitignore",
+        ".lighthouse",
+        "Dockerfilest",
+        "Dockerfilest.dev",
+        "Dockerfilest.test",
+        "OWNERS",
+        "OWNERS_ALIASES",
+        "tarpaulin-report.html"
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

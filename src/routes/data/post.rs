@@ -69,27 +69,12 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
                   token: String,
                   render_engine: R,
                   data_store: D,
-                  keys_store: K| async move {
+                  key_store: K| async move {
                 match session_with_store.session.get("token") {
                     Some::<String>(session_token) => {
                         if session_token != path_params.token {
-                            Err(IframeTokensDoNotMatchRejection)?
+                            Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
                         } else {
-                            // let mut encrypted_by = None;
-                            // if let Some(edit) = query_params.edit {
-                            //     if edit {
-                            //         if let Ok(keys) = keys_store.list().await {
-                            //             encrypted_by = Some(
-                            //                 keys.results
-                            //                     .iter()
-                            //                     .map(|key| key.name().to_owned())
-                            //                     .collect(),
-                            //             );
-                            //         }
-                            //     }
-                            // }
-                            // data.en
-
                             data_store
                                 .create(data.clone())
                                 .await
@@ -103,7 +88,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
                                                 value: TemplateValues::Secure(
                                                     SecureTemplateValues {
                                                         data: Some(data.clone()),
-                                                        path: Some(data.path().to_string()),
+                                                        path: Some(data.path()),
                                                         token: Some(token.clone()),
                                                         css: query_params.css,
                                                         edit: query_params.edit,
@@ -118,7 +103,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
                                 })?
                         }
                     }
-                    None => Err(SessionTokenNotFoundRejection)?,
+                    None => Err(warp::reject::custom(SessionTokenNotFoundRejection)),
                 }
             },
         )

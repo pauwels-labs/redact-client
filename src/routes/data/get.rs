@@ -72,29 +72,6 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R| async move {
-                // let mut template_values = HashMap::new();
-                // template_values.insert("path".to_string(), path_params.path.clone());
-                // template_values.insert("token".to_string(), token.clone());
-
-                // match query_params.css {
-                //     Some(css) => template_values.insert("css".to_string(), css),
-                //     _ => None,
-                // };
-                // match query_params.edit {
-                //     Some(edit) => template_values.insert("edit".to_string(), edit.to_string()),
-                //     _ => None,
-                // };
-                // match query_params.index {
-                //     Some(index) => template_values.insert("index".to_string(), index.to_string()),
-                //     _ => None,
-                // };
-                // match query_params.fetch_id {
-                //     Some(fetch_id) => {
-                //         template_values.insert("fetch_id".to_string(), fetch_id.to_string())
-                //     }
-                //     _ => None,
-                // };
-
                 let utv = UnsecureTemplateValues {
                     path: path_params.path.clone(),
                     token: token.clone(),
@@ -263,21 +240,6 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                         session_with_store,
                     ))
                 }
-
-                // let mut encrypted_by = None;
-                // if let Some(edit) = query_params.edit {
-                //     if edit {
-                //         if let Ok(keys) = keys_store.list().await {
-                //             encrypted_by = Some(
-                //                 keys.results
-                //                     .iter()
-                //                     .map(|key| key.name().to_owned())
-                //                     .collect(),
-                //             );
-                //         }
-                //     }
-                // }
-                //             template_values.encrypted_by = encrypted_by;
             },
         )
         .untuple_one()

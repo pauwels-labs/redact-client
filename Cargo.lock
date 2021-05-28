@@ -911,9 +911,9 @@ dependencies = [
 
 [[package]]
 name = "handlebars"
-version = "3.5.2"
+version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "964d0e99a61fe9b1b347389b77ebf8b7e1587b70293676aaca7d27e59b9073b2"
+checksum = "28f0fe89affef47e2c9729030a8f6e79df34cb66b8a44ecf91dad43f31150559"
 dependencies = [
  "log",
  "pest",
@@ -2053,9 +2053,9 @@ dependencies = [
 
 [[package]]
 name = "redact-crypto"
-version = "0.1.6"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4050b80570578012f61e4d10743e766be470425bef6ea751aded0e5db84e20f4"
+checksum = "9b37d4e73b9b6900a17e0e77349068e828dc468cc45b3de9be2a4d347b89f6ad"
 dependencies = [
  "async-trait",
  "futures",
@@ -2068,8 +2068,9 @@ dependencies = [
 
 [[package]]
 name = "redact-data"
-version = "0.1.0"
-source = "git+https://github.com/pauwels-labs/redact-data.git?rev=31f1ade46768d59e5dbc3622bbcbbdc9132581a6#31f1ade46768d59e5dbc3622bbcbbdc9132581a6"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a947abe29eb6328708151f0e9b2805113210cd3b6477c09dbc47ef78eed8cbcc"
 dependencies = [
  "async-trait",
  "futures",

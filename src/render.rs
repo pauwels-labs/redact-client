@@ -1,11 +1,14 @@
 use handlebars::{
     Context, Handlebars, Helper, Output, RenderContext, RenderError as HandlebarsRenderError,
-    TemplateFileError,
+    TemplateError as HandlebarsTemplateError,
 };
 use redact_data::{Data, DataValue, DataValueCollection, UnencryptedDataValue};
 use serde::Serialize;
-use std::cmp::{Eq, PartialEq};
 use std::ops::Deref;
+use std::{
+    cmp::{Eq, PartialEq},
+    convert::From,
+};
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 use warp::{reject::Reject, Reply};
@@ -15,7 +18,7 @@ pub enum RenderError {
     #[error("Failure happened during render")]
     RenderError { source: HandlebarsRenderError },
     #[error("Failed to load template file")]
-    TemplateFileError { source: TemplateFileError },
+    TemplateError { source: HandlebarsTemplateError },
 }
 
 impl Reject for RenderError {}
@@ -45,9 +48,9 @@ pub struct SecureTemplateValues {
     pub edit: Option<bool>,
 }
 
-impl std::convert::From<TemplateFileError> for RenderError {
-    fn from(source: TemplateFileError) -> Self {
-        RenderError::TemplateFileError { source }
+impl From<HandlebarsTemplateError> for RenderError {
+    fn from(source: HandlebarsTemplateError) -> Self {
+        RenderError::TemplateError { source }
     }
 }
 

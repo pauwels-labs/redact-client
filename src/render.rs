@@ -2,7 +2,7 @@ use handlebars::{
     Context, Handlebars, Helper, Output, RenderContext, RenderError as HandlebarsRenderError,
     TemplateFileError,
 };
-use redact_data::{Data, DataValue};
+use redact_data::{Data, DataValue, DataValueCollection, UnencryptedDataValue};
 use serde::Serialize;
 use std::cmp::{Eq, PartialEq};
 use std::ops::Deref;
@@ -77,7 +77,7 @@ impl Reply for Rendered {
     }
 }
 
-fn data_as_input(
+fn data_display(
     h: &Helper,
     _: &Handlebars,
     _: &Context,
@@ -85,45 +85,87 @@ fn data_as_input(
     out: &mut dyn Output,
 ) -> Result<(), HandlebarsRenderError> {
     // get parameter from helper or throw an error
-    let value = h
+    let value: DataValueCollection = h
         .param(0)
-        .and_then(|v| {
-            Some(DataValue::from(
-                v.value().get("value")?.as_str()?,
-            ))
+        .and_then(|v| v.value().get("value"))
+        .ok_or_else(|| HandlebarsRenderError::new("Value provided as data_input cannot be null"))
+        .and_then(|data| serde_json::value::from_value(data.to_owned()).map_err(|e| e.into()))?;
+
+    out.write(&value.to_string()).map_err(|e| e.into())
+}
+
+fn data_input(
+    h: &Helper,
+    _: &Handlebars,
+    _: &Context,
+    _: &mut RenderContext,
+    out: &mut dyn Output,
+) -> Result<(), HandlebarsRenderError> {
+    // get parameter from helper or throw an error
+    let value: DataValueCollection = h
+        .param(0)
+        .and_then(|v| v.value().get("value"))
+        .ok_or_else(|| HandlebarsRenderError::new("Value provided to data_input cannot be null"))
+        .and_then(|data| serde_json::value::from_value(data.to_owned()).map_err(|e| e.into()))?;
+
+    let udv = value
+        .0
+        .iter()
+        .find_map(|dv| {
+            if let DataValue::Unencrypted(udv) = dv {
+                Some(udv)
+            } else {
+                None
+            }
         })
         .ok_or_else(|| {
-            HandlebarsRenderError::new("Value provided as a DataValue in the data_as_input helper must be interpretable as a string-type")
+            HandlebarsRenderError::new(
+                "Data provided to data_input helper must be decrypted before use",
+            )
         })?;
-    match value {
-        DataValue::Bool(ref b) => {
+
+    match udv {
+        UnencryptedDataValue::Bool(b) => {
+            out.write("<input type=\"hidden\" name=\"value_type\" value=\"bool\">")?;
             if *b {
                 out
-		.write("<input type=\"checkbox\" class=\"checkbox\" name=\"value\" value=\"true\" checked>")
+    		.write("<input type=\"checkbox\" class=\"checkbox\" name=\"value\" value=\"true\" checked autofocus>")
             } else {
                 out.write(
-                    "<input type=\"checkbox\" class=\"checkbox\" name=\"value\" value=\"true\">",
+                    "<input type=\"checkbox\" class=\"checkbox\" name=\"value\" value=\"true\" autofocus>",
                 )
             }
         }
-        DataValue::U64(n) => out.write(&format!(
-            "<input type=\"number\" class=\"number\" name=\"value\" min=\"0\" value=\"{}\">",
-            n
-        )),
-        DataValue::I64(n) => out.write(&format!(
-            "<input type=\"number\" class=\"number\" name=\"value\" value=\"{}\">",
-            n
-        )),
-        DataValue::F64(n) => out.write(&format!(
-            "<input type=\"number\" class=\"number\" name=\"value\" step=\"any\" value=\"{}\">",
-            n
-        )),
-        DataValue::String(s) => out.write(&format!(
-            "<input type=\"text\" class=\"text\" name=\"value\" value=\"{}\">",
-            s
-        )),
-    }?;
-    Ok(())
+        UnencryptedDataValue::U64(n) => {
+            out.write("<input type=\"hidden\" name=\"value_type\" value=\"u64\">")?;
+            out.write(&format!(
+                "<input type=\"number\" class=\"number\" name=\"value\" min=\"0\" value=\"{}\" autofocus>",
+                n
+            ))
+        }
+        UnencryptedDataValue::I64(n) => {
+            out.write("<input type=\"hidden\" name=\"value_type\" value=\"i64\">")?;
+            out.write(&format!(
+                "<input type=\"number\" class=\"number\" name=\"value\" value=\"{}\" autofocus>",
+                n
+            ))
+        }
+        UnencryptedDataValue::F64(n) => {
+            out.write("<input type=\"hidden\" name=\"value_type\" value=\"f64\">")?;
+            out.write(&format!(
+                "<input type=\"number\" class=\"number\" name=\"value\" step=\"any\" value=\"{}\" autofocus>",
+                n
+            ))
+        }
+        UnencryptedDataValue::String(s) => {
+            out.write("<input type=\"hidden\" name=\"value_type\" value=\"string\">")?;
+            out.write(&format!(
+                "<input type=\"text\" class=\"text\" name=\"value\" value=\"{}\" autofocus>",
+                s
+            ))
+        }
+    }
+    .map_err(|e| e.into())
 }
 
 pub trait Renderer: Clone + Send + Sync {
@@ -152,7 +194,8 @@ impl<'reg> HandlebarsRenderer<'reg> {
         for (key, val) in template_mapping.iter() {
             hbs.register_template_file(key, val)?;
         }
-        hbs.register_helper("data_as_input", Box::new(data_as_input));
+        hbs.register_helper("data_input", Box::new(data_input));
+        hbs.register_helper("data_display", Box::new(data_display));
         Ok(HandlebarsRenderer { hbs: Arc::new(hbs) })
     }
 }

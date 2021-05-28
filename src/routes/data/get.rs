@@ -168,7 +168,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                         .get_collection(&path_params.path, index, 1)
                         .await
                         .map_err(|e| warp::reject::custom(DataStorageErrorRejection(e)))?;
-                    if let Some(data) = data_collection.data.pop() {
+                    if let Some(data) = data_collection.0.pop() {
                         let reply = Rendered::new(
                             render_engine,
                             RenderTemplate {

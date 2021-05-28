@@ -95,11 +95,12 @@ async fn main() {
         )),
     );
 
-    // Start the server
-    println!("starting server listening on ::{}", port);
     let routes = health_route
         .or(get_routes)
         .or(post_routes)
         .with(warp::log("routes"));
+
+    // Start the server
+    println!("starting server listening on ::{}", port);
     warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 }

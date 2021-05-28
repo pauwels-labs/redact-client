@@ -45,4 +45,4 @@ warp-sessions = "1.0.13"
 base64 = "0.13.0"
 sodiumoxide = "0.2.6"
 redact-crypto = "0.1.6"
-redact-data = "0.1.0"
+redact-data = { git = "https://github.com/pauwels-labs/redact-data.git", rev = "31f1ade46768d59e5dbc3622bbcbbdc9132581a6" }

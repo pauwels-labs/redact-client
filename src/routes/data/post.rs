@@ -1,15 +1,15 @@
 use crate::{
     render::{RenderTemplate, Rendered, Renderer, SecureTemplateValues, TemplateValues},
     routes::{
-        DataStorageErrorRejection, IframeTokensDoNotMatchRejection, SerializationRejection,
-        SessionTokenNotFoundRejection,
+        BadRequestRejection, DataStorageErrorRejection, IframeTokensDoNotMatchRejection,
+        SerializationRejection, SessionTokenNotFoundRejection,
     },
     token::TokenGenerator,
 };
 use redact_crypto::KeyStorer;
-use redact_data::{Data, DataStorer};
+use redact_data::{Data, DataStorer, DataValue};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use std::convert::{From, TryFrom};
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore};
 
@@ -20,9 +20,30 @@ struct SubmitDataPathParams {
 
 #[derive(Deserialize, Serialize, Debug)]
 struct SubmitDataBodyParams {
-    data: Value,
-    data_type: String,
-    encrypted_by: Vec<String>,
+    path: String,
+    value: Option<String>,
+    value_type: String,
+}
+
+impl TryFrom<SubmitDataBodyParams> for Data {
+    type Error = BadRequestRejection;
+
+    fn try_from(body: SubmitDataBodyParams) -> Result<Self, Self::Error> {
+        if let Some(value) = body.value {
+            let dv = match body.value_type.as_ref() {
+                "bool" => DataValue::from(value.parse::<bool>().or(Err(BadRequestRejection))?),
+                "u64" => DataValue::from(value.parse::<u64>().or(Err(BadRequestRejection))?),
+                "i64" => DataValue::from(value.parse::<i64>().or(Err(BadRequestRejection))?),
+                "f64" => DataValue::from(value.parse::<f64>().or(Err(BadRequestRejection))?),
+                "string" => DataValue::from(value),
+                _ => return Err(BadRequestRejection),
+            };
+
+            Ok(Data::new(&body.path, dv))
+        } else {
+            Ok(Data::new(&body.path, DataValue::from(false)))
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -43,7 +64,13 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
     warp::any()
         .and(warp::path!("data" / String).map(|token| SubmitDataPathParams { token }))
         .and(warp::query::<SubmitDataQueryParams>())
-        .and(warp::filters::body::form::<Data>())
+        .and(
+            warp::filters::body::form::<SubmitDataBodyParams>().and_then(
+                move |body: SubmitDataBodyParams| async {
+                    Ok::<_, Rejection>(Data::try_from(body)?)
+                },
+            ),
+        )
         .and(warp_sessions::request::with_session(
             session_store,
             Some(CookieOptions {

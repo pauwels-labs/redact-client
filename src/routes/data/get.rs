@@ -378,7 +378,7 @@ mod tests {
                 .expect_render()
                 .withf(move |template: &RenderTemplate| {
                     let expected_value = TemplateValues::Secure(SecureTemplateValues {
-                        data: Some(Data::new(".testKey.", "someval".into(), None)),
+                        data: Some(Data::new(".testKey.", "someval".into())),
                         path: Some(".testKey.".to_owned()),
                         token: Some(
                             "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
@@ -408,7 +408,7 @@ mod tests {
                 .expect_get()
                 .times(1)
                 .with(predicate::eq(".testKey."))
-                .returning(|_| Ok(Data::new(".testKey.", "someval".into(), None)));
+                .returning(|_| Ok(Data::new(".testKey.", "someval".into())));
 
             let mut key_storer = MockKeyStorer::new();
             key_storer.expect_get().times(0);

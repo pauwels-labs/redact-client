@@ -1,7 +1,15 @@
 storage:
   url: http://localhost:8081
 crypto:
-  keys:
-    defaultkeyname: admin
-    publicpath: ./keys/public
-    privatepath: ./keys/private
+  bootstrapidentity:
+    name: seraphin
+    executor:
+      Asymmetric:
+        Secret:
+          SodiumOxide: {}
+    source:
+      Bytes:
+        Fs:
+          path: keys/private/admin.key
+    alg: curve25519xsalsa20poly1305,
+    encrypted_by: "noone"

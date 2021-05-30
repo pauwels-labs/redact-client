@@ -2,10 +2,10 @@ pub mod render;
 mod routes;
 pub mod token;
 
+use redact_config::Configurator;
 use redact_crypto::{Key, RedactKeyStorer};
 use redact_data::RedactDataStorer;
 use render::HandlebarsRenderer;
-use rust_config::Configurator;
 use serde::Serialize;
 use std::collections::HashMap;
 use token::FromThreadRng;
@@ -31,7 +31,7 @@ fn get_port<T: Configurator>(config: &T) -> u16 {
         Err(e) => {
             match e {
                 // Suppress debug logging if server.port was simply not set
-                rust_config::ConfigError::NotFound(_) => (),
+                redact_config::ConfigError::NotFound(_) => (),
                 _ => println!("{}", e),
             }
             8080
@@ -42,7 +42,7 @@ fn get_port<T: Configurator>(config: &T) -> u16 {
 #[tokio::main]
 async fn main() {
     // Extract config with a REDACT env var prefix
-    let config = rust_config::new("REDACT").unwrap();
+    let config = redact_config::new("REDACT").unwrap();
 
     // Call this here to make sure it's done
     // We should see if there's a cleaner way to handle this init step

@@ -26,7 +26,7 @@ exclude = [
 [dependencies]
 tokio = { version = "1.0.2", features = ["macros", "rt-multi-thread"] }
 warp = "0.3.0"
-rust-config = { git = "https://github.com/ajpauwels/rust-config.git", rev = "f5d30659eba5cbcf57941414ddc79a19dfcf1110" }
+redact-config = "1.0.1"
 serde = { version = "1.0.125", features = ["derive"] }
 serde_json = "1.0.64"
 futures = "0.3.12"

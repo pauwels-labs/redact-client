@@ -9,7 +9,7 @@ use crate::{
     token::TokenGenerator,
 };
 use redact_crypto::KeyStorer;
-use redact_data::DataStorer;
+use redact_data::{DataStorer, Data, DataValue, DataType, StorageError, UnencryptedDataValue};
 use serde::{Deserialize, Serialize};
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{
@@ -162,7 +162,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                     Err(warp::reject::custom(SessionTokenNotFoundRejection))
                 }?;
 
-                if let (Some(_fetch_id), Some(index)) = (query_params.fetch_id, query_params.index)
+                if let (Some(_fetch_id), Some(index)) = (query_params.fetch_id.clone(), query_params.index.clone())
                 {
                     let mut data_collection = data_store
                         .get_collection(&path_params.path, index, 1)
@@ -216,6 +216,23 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                     let data = data_store
                         .get(&path_params.path)
                         .await
+                        .or_else(|err| {
+                            match query_params.edit {
+                                Some(edit) => {
+                                    // Ignore errors when editing data because it is not required to exist in the event of a new entry
+                                    // This should be more precise to only ignore not-found errors, and only when the host
+                                    // specifies that a new entry is intented
+                                    if edit {
+                                        Ok(Data::new(
+                                            &path_params.path,
+                                            DataValue::Unencrypted(UnencryptedDataValue::String("hi".to_owned()))))
+                                    } else {
+                                        Err(err)
+                                    }
+                                }
+                                _ => Err(err)
+                            }
+                        })
                         .map_err(|e| warp::reject::custom(DataStorageErrorRejection(e)))?;
 
                     let reply = Rendered::new(

@@ -9,7 +9,7 @@ use crate::{
     token::TokenGenerator,
 };
 use redact_crypto::KeyStorer;
-use redact_data::{DataStorer, Data, DataValue, DataType, StorageError, UnencryptedDataValue};
+use redact_data::{DataStorer, Data, DataValue, DataType, UnencryptedDataValue};
 use serde::{Deserialize, Serialize};
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{
@@ -22,6 +22,8 @@ struct WithoutTokenQueryParams {
     edit: Option<bool>,
     fetch_id: Option<String>,
     index: Option<i64>,
+    create: Option<bool>,
+    create_data_type: Option<DataType>
 }
 
 #[derive(Deserialize, Serialize)]
@@ -35,6 +37,8 @@ struct WithTokenQueryParams {
     edit: Option<bool>,
     index: Option<i64>,
     fetch_id: Option<String>,
+    create: Option<bool>,
+    create_data_type: Option<DataType>
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -79,6 +83,8 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                     edit: query_params.edit,
                     index: query_params.index,
                     fetch_id: query_params.fetch_id,
+                    create: query_params.create,
+                    create_data_type: query_params.create_data_type,
                 };
                 Ok::<_, Rejection>((
                     Rendered::new(
@@ -217,15 +223,21 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                         .get(&path_params.path)
                         .await
                         .or_else(|err| {
-                            match query_params.edit {
-                                Some(edit) => {
-                                    // Ignore errors when editing data because it is not required to exist in the event of a new entry
-                                    // This should be more precise to only ignore not-found errors, and only when the host
-                                    // specifies that a new entry is intented
-                                    if edit {
+                            match query_params.create.clone() {
+                                Some(create) => {
+                                    // Ignore errors when creating data because non existing entries
+                                    // throws erroneous errors
+                                    if create {
                                         Ok(Data::new(
                                             &path_params.path,
-                                            DataValue::Unencrypted(UnencryptedDataValue::String("hi".to_owned()))))
+                                            match query_params.create_data_type.clone() {
+                                                Some(DataType::String) => DataValue::Unencrypted(UnencryptedDataValue::String("".to_owned())),
+                                                Some(DataType::U64) => DataValue::Unencrypted(UnencryptedDataValue::U64(0)),
+                                                Some(DataType::I64) => DataValue::Unencrypted(UnencryptedDataValue::I64(0)),
+                                                Some(DataType::F64) => DataValue::Unencrypted(UnencryptedDataValue::F64(0.0)),
+                                                Some(DataType::Bool) => DataValue::Unencrypted(UnencryptedDataValue::Bool(true)),
+                                                _ => DataValue::Unencrypted(UnencryptedDataValue::String("".to_owned()))
+                                            }))
                                     } else {
                                         Err(err)
                                     }
@@ -234,7 +246,6 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                             }
                         })
                         .map_err(|e| warp::reject::custom(DataStorageErrorRejection(e)))?;
-
                     let reply = Rendered::new(
                         render_engine,
                         RenderTemplate {
@@ -244,7 +255,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                                 path: Some(data.path()),
                                 token: Some(token.clone()),
                                 css: query_params.css,
-                                edit: query_params.edit,
+                                edit: query_params.edit.clone().or(query_params.create.clone()),
                             }),
                         },
                     )?;
@@ -252,7 +263,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                     Ok::<_, Rejection>((
                         reply,
                         path_params,
-                        query_params.edit.unwrap_or(false),
+                        query_params.edit.or(query_params.create).unwrap_or(false),
                         token,
                         session_with_store,
                     ))
@@ -316,7 +327,7 @@ mod tests {
         use mockall::predicate::*;
         use mockall::*;
         use redact_crypto::storage::tests::MockKeyStorer;
-        use redact_data::{storage::tests::MockDataStorer, Data};
+        use redact_data::{storage::tests::MockDataStorer, Data, StorageError};
         use serde::Serialize;
 
         use std::{
@@ -444,6 +455,79 @@ mod tests {
                     .header("cookie", "sid=testSID")
                     .reply(&with_token_filter)
                     .await;
+            assert_eq!(res.status(), 200);
+        }
+
+        #[tokio::test]
+        async fn with_token_edit_true_new_entry() {
+            let mut session = Session::new();
+            session.set_cookie_value("testSID".to_owned());
+            session
+                .insert(
+                    "token",
+                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C",
+                )
+                .unwrap();
+            let expected_sid = session.id().to_owned();
+
+            let mut mock_store = MockSessionStore::new();
+            mock_store
+                .expect_load_session()
+                .with(predicate::eq("testSID".to_owned()))
+                .times(1)
+                .return_once(move |_| Ok(Some(session)));
+            mock_store
+                .expect_destroy_session()
+                .withf(move |session: &Session| session.id() == expected_sid)
+                .times(1)
+                .return_once(move |_| Ok(()));
+
+            mock_store
+                .expect_store_session()
+                .times(1);
+            let session_store = ArcSessionStore(Arc::new(mock_store));
+
+            let mut render_engine = MockRenderer::new();
+            render_engine
+                .expect_render()
+                .times(1)
+                .return_once(move |_| Ok("".to_string()));
+
+            let mut token_generator = MockTokenGenerator::new();
+            token_generator
+                .expect_generate_token()
+                .times(1)
+                .returning(|| {
+                    Ok(
+                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
+                            .to_owned(),
+                    )
+                });
+
+            let mut data_storer = MockDataStorer::new();
+            data_storer
+                .expect_get()
+                .times(1)
+                .with(predicate::eq(".testKey."))
+                .returning(|_| Err(StorageError::NotFound));
+
+            let mut key_storer = MockKeyStorer::new();
+            key_storer.expect_get().times(0);
+
+            let with_token_filter = get::with_token(
+                session_store,
+                Arc::new(render_engine),
+                Arc::new(token_generator),
+                Arc::new(data_storer),
+                Arc::new(key_storer),
+            );
+
+            let res = warp::test::request()
+                .method("POST")
+                .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C?edit=true")
+                .header("cookie", "sid=testSID")
+                .reply(&with_token_filter)
+                .await;
             assert_eq!(res.status(), 200);
         }
     }

@@ -459,7 +459,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn with_token_edit_true_new_entry() {
+        async fn with_token_create() {
             let mut session = Session::new();
             session.set_cookie_value("testSID".to_owned());
             session
@@ -481,10 +481,10 @@ mod tests {
                 .withf(move |session: &Session| session.id() == expected_sid)
                 .times(1)
                 .return_once(move |_| Ok(()));
-
             mock_store
                 .expect_store_session()
-                .times(1);
+                .times(1)
+                .return_once(|_| Ok(Some("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_string())));
             let session_store = ArcSessionStore(Arc::new(mock_store));
 
             let mut render_engine = MockRenderer::new();
@@ -524,7 +524,7 @@ mod tests {
 
             let res = warp::test::request()
                 .method("POST")
-                .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C?edit=true")
+                .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C?create=true&create_data_type=String")
                 .header("cookie", "sid=testSID")
                 .reply(&with_token_filter)
                 .await;
@@ -556,6 +556,8 @@ mod tests {
                         edit: None,
                         index: None,
                         fetch_id: None,
+                        create: None,
+                        create_data_type: None
                     });
 
                     template.value == expected_value
@@ -602,6 +604,8 @@ mod tests {
                         edit: None,
                         index: None,
                         fetch_id: None,
+                        create: None,
+                        create_data_type: None
                     });
 
                     template.value == expected_value
@@ -648,6 +652,8 @@ mod tests {
                         edit: Some(true),
                         index: None,
                         fetch_id: None,
+                        create: None,
+                        create_data_type: None
                     });
                     template.value == expected_value
                 })
@@ -693,6 +699,8 @@ mod tests {
                         edit: Some(false),
                         index: None,
                         fetch_id: None,
+                        create: None,
+                        create_data_type: None
                     });
                     template.value == expected_value
                 })

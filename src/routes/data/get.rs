@@ -23,7 +23,8 @@ struct WithoutTokenQueryParams {
     fetch_id: Option<String>,
     index: Option<i64>,
     create: Option<bool>,
-    create_data_type: Option<DataType>
+    create_data_type: Option<DataType>,
+    relay_url: Option<String>
 }
 
 #[derive(Deserialize, Serialize)]
@@ -38,7 +39,8 @@ struct WithTokenQueryParams {
     index: Option<i64>,
     fetch_id: Option<String>,
     create: Option<bool>,
-    create_data_type: Option<DataType>
+    create_data_type: Option<DataType>,
+    relay_url: Option<String>
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -85,6 +87,7 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                     fetch_id: query_params.fetch_id,
                     create: query_params.create,
                     create_data_type: query_params.create_data_type,
+                    relay_url: query_params.relay_url
                 };
                 Ok::<_, Rejection>((
                     Rendered::new(
@@ -185,6 +188,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                                     token: Some(token.clone()),
                                     css: query_params.css,
                                     edit: query_params.edit,
+                                    relay_url: query_params.relay_url
                                 }),
                             },
                         )?;
@@ -208,6 +212,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                                         token: None,
                                         css: query_params.css,
                                         edit: query_params.edit,
+                                        relay_url: query_params.relay_url
                                     }),
                                 },
                             )?,
@@ -256,6 +261,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                                 token: Some(token.clone()),
                                 css: query_params.css,
                                 edit: query_params.edit.clone().or(query_params.create.clone()),
+                                relay_url: query_params.relay_url
                             }),
                         },
                     )?;
@@ -414,6 +420,7 @@ mod tests {
                         ),
                         css: None,
                         edit: None,
+                        relay_url: query_params.relay_url
                     });
                     template.value == expected_value
                 })
@@ -557,7 +564,8 @@ mod tests {
                         index: None,
                         fetch_id: None,
                         create: None,
-                        create_data_type: None
+                        create_data_type: None,
+                        relay_url: query_params.relay_url
                     });
 
                     template.value == expected_value
@@ -605,7 +613,8 @@ mod tests {
                         index: None,
                         fetch_id: None,
                         create: None,
-                        create_data_type: None
+                        create_data_type: None,
+                        relay_url: query_params.relay_url
                     });
 
                     template.value == expected_value
@@ -653,7 +662,8 @@ mod tests {
                         index: None,
                         fetch_id: None,
                         create: None,
-                        create_data_type: None
+                        create_data_type: None,
+                        relay_url: query_params.relay_url
                     });
                     template.value == expected_value
                 })
@@ -700,7 +710,8 @@ mod tests {
                         index: None,
                         fetch_id: None,
                         create: None,
-                        create_data_type: None
+                        create_data_type: None,
+                        relay_url: query_params.relay_url
                     });
                     template.value == expected_value
                 })

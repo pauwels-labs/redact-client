@@ -1988,6 +1988,7 @@ dependencies = [
  "base64 0.13.0",
  "futures",
  "handlebars",
+ "http",
  "hyper 0.14.8",
  "mockall",
  "rand 0.8.3",

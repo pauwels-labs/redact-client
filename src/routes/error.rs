@@ -30,3 +30,7 @@ impl Reject for BadRequestRejection {}
 #[derive(Debug)]
 pub struct SerializationRejection(pub JsonSerializationError);
 impl Reject for SerializationRejection {}
+
+#[derive(Debug)]
+pub struct RelayRejection;
+impl Reject for RelayRejection {}

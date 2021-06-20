@@ -38,7 +38,8 @@ pub struct UnsecureTemplateValues {
     pub index: Option<i64>,
     pub fetch_id: Option<String>,
     pub create: Option<bool>,
-    pub create_data_type: Option<DataType>
+    pub create_data_type: Option<DataType>,
+    pub relay_url: Option<String>
 }
 
 #[derive(Serialize, Debug, Default, PartialEq)]
@@ -48,6 +49,7 @@ pub struct SecureTemplateValues {
     pub token: Option<String>,
     pub css: Option<String>,
     pub edit: Option<bool>,
+    pub relay_url: Option<String>
 }
 
 impl From<HandlebarsTemplateError> for RenderError {

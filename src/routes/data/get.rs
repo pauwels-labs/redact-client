@@ -23,7 +23,7 @@ struct WithoutTokenQueryParams {
     fetch_id: Option<String>,
     index: Option<i64>,
     create: Option<bool>,
-    create_data_type: Option<DataType>
+    data_type: Option<DataType>
 }
 
 #[derive(Deserialize, Serialize)]
@@ -38,7 +38,7 @@ struct WithTokenQueryParams {
     index: Option<i64>,
     fetch_id: Option<String>,
     create: Option<bool>,
-    create_data_type: Option<DataType>
+    data_type: Option<DataType>
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -84,7 +84,7 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                     index: query_params.index,
                     fetch_id: query_params.fetch_id,
                     create: query_params.create,
-                    create_data_type: query_params.create_data_type,
+                    data_type: query_params.data_type,
                 };
                 Ok::<_, Rejection>((
                     Rendered::new(
@@ -230,7 +230,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                                     if create {
                                         Ok(Data::new(
                                             &path_params.path,
-                                            match query_params.create_data_type.clone() {
+                                            match query_params.data_type.clone() {
                                                 Some(DataType::String) => DataValue::Unencrypted(UnencryptedDataValue::String("".to_owned())),
                                                 Some(DataType::U64) => DataValue::Unencrypted(UnencryptedDataValue::U64(0)),
                                                 Some(DataType::I64) => DataValue::Unencrypted(UnencryptedDataValue::I64(0)),
@@ -524,7 +524,7 @@ mod tests {
 
             let res = warp::test::request()
                 .method("POST")
-                .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C?create=true&create_data_type=String")
+                .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C?create=true&data_type=String")
                 .header("cookie", "sid=testSID")
                 .reply(&with_token_filter)
                 .await;
@@ -557,7 +557,7 @@ mod tests {
                         index: None,
                         fetch_id: None,
                         create: None,
-                        create_data_type: None
+                        data_type: None
                     });
 
                     template.value == expected_value
@@ -605,7 +605,7 @@ mod tests {
                         index: None,
                         fetch_id: None,
                         create: None,
-                        create_data_type: None
+                        data_type: None
                     });
 
                     template.value == expected_value
@@ -653,7 +653,7 @@ mod tests {
                         index: None,
                         fetch_id: None,
                         create: None,
-                        create_data_type: None
+                        data_type: None
                     });
                     template.value == expected_value
                 })
@@ -700,7 +700,7 @@ mod tests {
                         index: None,
                         fetch_id: None,
                         create: None,
-                        create_data_type: None
+                        data_type: None
                     });
                     template.value == expected_value
                 })

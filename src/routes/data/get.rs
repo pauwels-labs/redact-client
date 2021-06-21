@@ -420,7 +420,7 @@ mod tests {
                         ),
                         css: None,
                         edit: None,
-                        relay_url: query_params.relay_url
+                        relay_url: None
                     });
                     template.value == expected_value
                 })
@@ -565,7 +565,7 @@ mod tests {
                         fetch_id: None,
                         create: None,
                         create_data_type: None,
-                        relay_url: query_params.relay_url
+                        relay_url: None
                     });
 
                     template.value == expected_value
@@ -614,7 +614,7 @@ mod tests {
                         fetch_id: None,
                         create: None,
                         create_data_type: None,
-                        relay_url: query_params.relay_url
+                        relay_url: None
                     });
 
                     template.value == expected_value
@@ -663,7 +663,7 @@ mod tests {
                         fetch_id: None,
                         create: None,
                         create_data_type: None,
-                        relay_url: query_params.relay_url
+                        relay_url: None
                     });
                     template.value == expected_value
                 })
@@ -711,7 +711,7 @@ mod tests {
                         fetch_id: None,
                         create: None,
                         create_data_type: None,
-                        relay_url: query_params.relay_url
+                        relay_url: None
                     });
                     template.value == expected_value
                 })

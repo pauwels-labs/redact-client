@@ -2,7 +2,7 @@ use handlebars::{
     Context, Handlebars, Helper, Output, RenderContext, RenderError as HandlebarsRenderError,
     TemplateError as HandlebarsTemplateError,
 };
-use redact_data::{Data, DataValue, DataValueCollection, UnencryptedDataValue};
+use redact_data::{Data, DataValue, DataValueCollection, UnencryptedDataValue, DataType};
 use serde::Serialize;
 use std::ops::Deref;
 use std::{
@@ -37,6 +37,8 @@ pub struct UnsecureTemplateValues {
     pub edit: Option<bool>,
     pub index: Option<i64>,
     pub fetch_id: Option<String>,
+    pub create: Option<bool>,
+    pub data_type: Option<DataType>
 }
 
 #[derive(Serialize, Debug, Default, PartialEq)]

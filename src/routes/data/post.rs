@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
 use std::convert::{From, TryFrom};
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore};
+use std::collections::HashMap;
+use crate::routes::error::RelayRejection;
+use http::{StatusCode};
 
 #[derive(Deserialize, Serialize)]
 struct SubmitDataPathParams {
@@ -23,6 +26,7 @@ struct SubmitDataBodyParams {
     path: String,
     value: Option<String>,
     value_type: String,
+    relay_url: Option<String>,
 }
 
 impl TryFrom<SubmitDataBodyParams> for Data {
@@ -67,7 +71,8 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
         .and(
             warp::filters::body::form::<SubmitDataBodyParams>().and_then(
                 move |body: SubmitDataBodyParams| async {
-                    Ok::<_, Rejection>(Data::try_from(body)?)
+                    let relay_url = body.relay_url.clone();
+                    Ok::<_, Rejection>((relay_url, Data::try_from(body)?))
                 },
             ),
         )
@@ -91,43 +96,76 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
         .and_then(
             move |path_params: SubmitDataPathParams,
                   query_params: SubmitDataQueryParams,
-                  data: Data,
+                  request_info: (Option<String>, Data),
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R,
                   data_store: D,
                   key_store: K| async move {
+                let data = request_info.1;
+                let relay_url = request_info.0;
+
                 match session_with_store.session.get("token") {
                     Some::<String>(session_token) => {
                         if session_token != path_params.token {
                             Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
                         } else {
-                            data_store
+                            let res = data_store
                                 .create(data.clone())
                                 .await
-                                .map_err(DataStorageErrorRejection)
-                                .map(|_| {
-                                    Ok::<_, Rejection>((
-                                        Rendered::new(
-                                            render_engine,
-                                            RenderTemplate {
-                                                name: "secure",
-                                                value: TemplateValues::Secure(
-                                                    SecureTemplateValues {
-                                                        data: Some(data.clone()),
-                                                        path: Some(data.path()),
-                                                        token: Some(token.clone()),
-                                                        css: query_params.css,
-                                                        edit: query_params.edit,
-                                                    },
-                                                ),
-                                            },
-                                        )?,
-                                        path_params,
-                                        token,
-                                        session_with_store,
-                                    ))
-                                })?
+                                .map_err(DataStorageErrorRejection);
+
+                            match res {
+                                Ok(_) => {
+                                    let mut relay_err = false;
+                                    if let Some(relay_url) = relay_url.clone() {
+                                        let mut req_body = HashMap::new();
+                                        req_body.insert("path", data.path());
+                                        let client = reqwest::Client::new();
+                                        let resp = client.post(relay_url.clone())
+                                            .json(&req_body)
+                                            .send()
+                                            .await
+                                            .map_err(|_| warp::reject::custom(RelayRejection))
+                                            .and_then(|response| {
+                                                if response.status() != StatusCode::OK {
+                                                    Err(warp::reject::custom(RelayRejection))
+                                                } else {
+                                                    Ok(response)
+                                                }
+                                            });
+                                        relay_err = resp.is_err();
+                                    }
+
+                                    if relay_err {
+                                        Err(warp::reject::custom(RelayRejection))
+                                    } else {
+                                        Ok::<_, Rejection>((
+                                            Rendered::new(
+                                                render_engine,
+                                                RenderTemplate {
+                                                    name: "secure",
+                                                    value: TemplateValues::Secure(
+                                                        SecureTemplateValues {
+                                                            data: Some(data.clone()),
+                                                            path: Some(data.path()),
+                                                            token: Some(token.clone()),
+                                                            css: query_params.css,
+                                                            edit: query_params.edit,
+                                                            relay_url
+                                                        },
+                                                    ),
+                                                },
+                                            )?,
+                                            path_params,
+                                            token,
+                                            session_with_store,
+                                        ))
+                                    }
+
+                                }
+                                Err(e) => Err(warp::reject::custom(e))
+                            }
                         }
                     }
                     None => Err(warp::reject::custom(SessionTokenNotFoundRejection)),
@@ -171,4 +209,153 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
         )
         .untuple_one()
         .and_then(warp_sessions::reply::with_session)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::render::{
+        tests::MockRenderer
+    };
+    use crate::routes::data::post;
+    use crate::token::tests::MockTokenGenerator;
+    use async_trait::async_trait;
+    use mockall::predicate::*;
+    use mockall::*;
+    use redact_crypto::storage::tests::MockKeyStorer;
+    use redact_data::{storage::tests::MockDataStorer};
+    use serde::Serialize;
+
+    use std::{
+        fmt::{self, Debug, Formatter},
+        sync::Arc,
+    };
+    use warp_sessions::{ArcSessionStore, Session, SessionStore};
+
+    #[cfg(test)]
+    use mockito::{mock, Matcher};
+
+    mock! {
+                pub SessionStore {}
+
+    #[async_trait]
+    impl SessionStore for SessionStore {
+                async fn load_session(&self, cookie_value: String) -> async_session::Result<Option<Session>>;
+                async fn store_session(&self, session: Session) -> async_session::Result<Option<String>>;
+                async fn destroy_session(&self, session: Session) -> async_session::Result;
+                async fn clear_store(&self) -> async_session::Result;
+            }
+
+                        impl Debug for SessionStore {
+                            fn fmt<'a>(&self, f: &mut Formatter<'a>) -> fmt::Result;
+                        }
+
+                        impl Clone for SessionStore {
+                            fn clone(&self) -> Self;
+                        }
+                        }
+
+    mock! {
+        pub Session {
+            fn new() -> Self;
+                    fn id_from_cookie_value(string: &str) -> Result<String, base64::DecodeError>;
+                    fn destroy(&mut self);
+                    fn is_destroyed(&self) -> bool;
+            fn id(&self) -> &str;
+            fn insert<T: Serialize +'static>(&mut self, key: &str, value: T) -> Result<(), serde_json::Error>;
+            fn insert_raw(&mut self, key: &str, value: String);
+            fn get<T: serde::de::DeserializeOwned + 'static>(&self, key: &str) -> Option<T>;
+            fn get_raw(&self, key: &str) -> Option<String>;
+        }
+
+    impl Clone for Session {
+        fn clone(&self) -> Self;
+    }
+        impl Debug for Session {
+            fn fmt<'a>(&self, f: &mut Formatter<'a>) -> fmt::Result;
+        }
+    }
+
+
+    #[tokio::test]
+    async fn test_submit_data() {
+
+        #[cfg(not(test))]
+        let url = "https://xyz.xyz";
+        
+        #[cfg(test)]
+        let mock_url = &mockito::server_url();
+        let token = "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D";
+        let data_path = ".TestKey.";
+
+        let m = mock("POST", "/redact/relay")
+            .with_status(200)
+            .match_body(Matcher::Json(serde_json::json!({"path": data_path})))
+            .create();
+
+        let mut session = Session::new();
+        session.set_cookie_value("testSID".to_owned());
+        session.insert("token", token).unwrap();
+        let expected_sid = session.id().to_owned();
+
+        let mut mock_store = MockSessionStore::new();
+        mock_store
+            .expect_load_session()
+            .with(predicate::eq("testSID".to_owned()))
+            .times(1)
+            .return_once(move |_| Ok(Some(session)));
+        mock_store
+            .expect_destroy_session()
+            .withf(move |session: &Session| session.id() == expected_sid)
+            .times(1)
+            .return_once(move |_| Ok(()));
+        mock_store
+            .expect_store_session()
+            .times(1)
+            .return_once(move |_| Ok(Some(token.to_string())));
+        let session_store = ArcSessionStore(Arc::new(mock_store));
+
+        let mut render_engine = MockRenderer::new();
+        render_engine
+            .expect_render()
+            .times(1)
+            .return_once(move |_| Ok("".to_string()));
+
+        let mut data_storer = MockDataStorer::new();
+        data_storer
+            .expect_create()
+            .times(1)
+            .returning(|_| Ok(true));
+
+        let mut token_generator = MockTokenGenerator::new();
+        token_generator
+            .expect_generate_token()
+            .returning(|| {
+                Ok(
+                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
+                        .to_owned(),
+                )
+            });
+
+        let mut key_storer = MockKeyStorer::new();
+        key_storer.expect_get().times(0);
+
+        let submit_data = post::submit_data(
+            session_store,
+            Arc::new(render_engine),
+            Arc::new(token_generator),
+            Arc::new(data_storer),
+            Arc::new(key_storer)
+        );
+
+        let res = warp::test::request()
+            .method("POST")
+            .path("/data/E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D")
+            .header("cookie", "sid=testSID")
+            .body(format!("relay_url={}%2Fredact%2Frelay&path={}&value_type=string&value=qew&submit=Submit", mock_url, data_path))
+            .reply(&submit_data)
+            .await;
+
+        assert_eq!(res.status(), 200);
+        m.assert();
+    }
 }

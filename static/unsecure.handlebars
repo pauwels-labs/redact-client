@@ -7,7 +7,7 @@
   <body>
     <iframe id="data-iframe" src="" title="secure"></iframe>
     <script>
-      document.getElementById("data-iframe").contentWindow.location.href = "/data/{{ Unsecure.path }}/{{ Unsecure.token }}?{{ #if Unsecure.css }}css={{ Unsecure.css }}{{ /if }}{{ #if Unsecure.css and Unsecure.edit }}&{{ /if }}{{ #if Unsecure.edit }}edit={{ Unsecure.edit }}{{ /if }}{{ #if Unsecure.css and Unsecure.index }}&{{ /if }}{{ #if Unsecure.index }}index={{ Unsecure.index }}{{ /if }}{{ #if Unsecure.fetch_id }}&fetch_id={{ Unsecure.fetch_id }}{{ /if }}{{ #if Unsecure.create }}&create={{ Unsecure.create }}{{ /if }}{{ #if Unsecure.data_type }}&data_type={{ Unsecure.data_type }}{{ /if }}";
+      document.getElementById("data-iframe").contentWindow.location.href = "/data/{{ Unsecure.path }}/{{ Unsecure.token }}?{{ #if Unsecure.css }}css={{ Unsecure.css }}{{ /if }}{{ #if Unsecure.css and Unsecure.edit }}&{{ /if }}{{ #if Unsecure.edit }}edit={{ Unsecure.edit }}{{ /if }}{{ #if Unsecure.css and Unsecure.index }}&{{ /if }}{{ #if Unsecure.index }}index={{ Unsecure.index }}{{ /if }}{{ #if Unsecure.fetch_id }}&fetch_id={{ Unsecure.fetch_id }}{{ /if }}{{ #if Unsecure.create }}&create={{ Unsecure.create }}{{ /if }}{{ #if Unsecure.data_type }}&data_type={{ Unsecure.data_type }}{{ /if }}{{ #if Unsecure.relay_url }}&relay_url={{ Unsecure.relay_url }}{{ /if }}";
     </script>
   </body>
 </html>

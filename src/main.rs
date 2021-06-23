@@ -1,6 +1,7 @@
 pub mod render;
 mod routes;
 pub mod token;
+mod error_handler;
 
 use redact_config::Configurator;
 use redact_crypto::{Key, RedactKeyStorer};
@@ -11,6 +12,7 @@ use std::collections::HashMap;
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
+use crate::error_handler::handle_rejection;
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -98,7 +100,8 @@ async fn main() {
     let routes = health_route
         .or(get_routes)
         .or(post_routes)
-        .with(warp::log("routes"));
+        .with(warp::log("routes"))
+        .recover(handle_rejection);
 
     // Start the server
     println!("starting server listening on ::{}", port);

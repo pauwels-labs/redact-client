@@ -1,9 +1,10 @@
-use warp::http::StatusCode;
-use warp::{reject, Filter, Rejection, Reply};
+use crate::routes::{
+    BadRequestRejection, IframeTokensDoNotMatchRejection, SessionTokenNotFoundRejection,
+};
+use serde::Serialize;
 use std::convert::Infallible;
-use std::error::Error;
-use crate::routes::{SessionTokenNotFoundRejection, BadRequestRejection, IframeTokensDoNotMatchRejection};
-use serde::{Deserialize, Serialize};
+use warp::http::StatusCode;
+use warp::{Rejection, Reply};
 
 /// An API error serializable to JSON.
 #[derive(Serialize)]
@@ -21,17 +22,16 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
         message = "NOT FOUND";
-    } else if let Some(e) = err.find::<SessionTokenNotFoundRejection>() {
+    } else if err.find::<SessionTokenNotFoundRejection>().is_some() {
         code = StatusCode::UNAUTHORIZED;
         message = "SESSION TOKEN NOT FOUND";
-    } else if let Some(e) = err.find::<IframeTokensDoNotMatchRejection>() {
+    } else if err.find::<IframeTokensDoNotMatchRejection>().is_some() {
         code = StatusCode::UNAUTHORIZED;
         message = "IFRAME TOKENS DO NOT MATCH";
-    } else if let Some(e) = err.find::<BadRequestRejection>() {
+    } else if err.find::<BadRequestRejection>().is_some() {
         code = StatusCode::BAD_REQUEST;
         message = "BAD REQUEST";
     } else {
-        // We should have expected this... Just log and say its a 500
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = "INTERNAL SERVER ERROR";
     }

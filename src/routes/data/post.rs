@@ -7,7 +7,6 @@ use crate::{
     },
     token::TokenGenerator,
 };
-use http::StatusCode;
 use redact_crypto::{Buildable, Data, States, Storer, SymmetricKey, SymmetricSealer, TypeBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -20,7 +19,7 @@ struct SubmitDataPathParams {
     token: String,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 struct SubmitDataBodyParams {
     path: String,
     value: Option<String>,
@@ -67,9 +66,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
         .and(
             warp::filters::body::form::<SubmitDataBodyParams>().and_then(
                 move |body: SubmitDataBodyParams| async {
-                    let data_path = body.path.clone();
-                    let relay_url = body.relay_url.clone();
-                    Ok::<_, Rejection>((relay_url, Data::try_from(body)?, data_path))
+                    Ok::<_, Rejection>((body.clone(), Data::try_from(body)?))
                 },
             ),
         )
@@ -92,7 +89,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
         .and_then(
             move |path_params: SubmitDataPathParams,
                   query_params: SubmitDataQueryParams,
-                  (relay_url, data, data_path): (Option<String>, Data, String),
+                  (body_params, data): (SubmitDataBodyParams, Data),
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R,
@@ -117,56 +114,51 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
 
                             storer
                                 .create(
-                                    data_path.clone(),
+                                    body_params.path.clone(),
                                     States::Sealed {
                                         builder,
                                         unsealable,
                                     },
                                 )
                                 .await
-                                .map_err(StorageErrorRejection)
-                                .map(|_| {
-                                    match relay_url {
-                                        Some(url) => {
-                                            let mut req_body = HashMap::new();
-                                            req_body.insert("path", data.path());
-                                            let client = reqwest::Client::new();
-                                            let resp = client
-                                                .post(relay_url)
-                                                .json(&req_body)
-                                                .send()
-                                                .await
-                                                .map_err(|_| warp::reject::custom(RelayRejection))
-                                                .and_then(|response| response.error_for_status())
-                                                .map_err(|_| {
-                                                    warp::reject::custom(RelayRejection)
-                                                })?;
-                                        }
-                                        None => Ok(()),
-                                    }?;
+                                .map_err(StorageErrorRejection)?;
 
-                                    Ok::<_, Rejection>((
-                                        Rendered::new(
-                                            render_engine,
-                                            RenderTemplate {
-                                                name: "secure",
-                                                value: TemplateValues::Secure(
-                                                    SecureTemplateValues {
-                                                        data: Some(data),
-                                                        path: Some(data_path),
-                                                        token: Some(token.clone()),
-                                                        css: query_params.css,
-                                                        edit: query_params.edit,
-                                                        relay_url,
-                                                    },
-                                                ),
-                                            },
-                                        )?,
-                                        path_params,
-                                        token,
-                                        session_with_store,
-                                    ))
-                                })?
+                            match body_params.relay_url {
+                                Some(ref url) => {
+                                    let mut req_body = HashMap::new();
+                                    req_body.insert("path", body_params.path.clone());
+                                    let client = reqwest::Client::new();
+                                    client
+                                        .post(url)
+                                        .json(&req_body)
+                                        .send()
+                                        .await
+                                        .and_then(|response| response.error_for_status())
+                                        .map_err(|_| warp::reject::custom(RelayRejection))?;
+                                    Ok::<(), RelayRejection>(())
+                                }
+                                None => Ok(()),
+                            }?;
+
+                            Ok::<_, Rejection>((
+                                Rendered::new(
+                                    render_engine,
+                                    RenderTemplate {
+                                        name: "secure",
+                                        value: TemplateValues::Secure(SecureTemplateValues {
+                                            data: Some(data),
+                                            path: Some(body_params.path),
+                                            token: Some(token.clone()),
+                                            css: query_params.css,
+                                            edit: query_params.edit,
+                                            relay_url: body_params.relay_url,
+                                        }),
+                                    },
+                                )?,
+                                path_params,
+                                token,
+                                session_with_store,
+                            ))
                         }
                     }
                     None => Err(warp::reject::custom(SessionTokenNotFoundRejection)),

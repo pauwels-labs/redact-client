@@ -2,13 +2,10 @@ use handlebars::{
     Context, Handlebars, Helper, Output, RenderContext, RenderError as HandlebarsRenderError,
     TemplateError as HandlebarsTemplateError,
 };
-use redact_data::{Data, DataValue, DataValueCollection, UnencryptedDataValue, DataType};
+use redact_crypto::Data;
 use serde::Serialize;
+use std::convert::From;
 use std::ops::Deref;
-use std::{
-    cmp::{Eq, PartialEq},
-    convert::From,
-};
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 use warp::{reject::Reject, Reply};
@@ -23,25 +20,22 @@ pub enum RenderError {
 
 impl Reject for RenderError {}
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug)]
 pub enum TemplateValues {
     Unsecure(UnsecureTemplateValues),
     Secure(SecureTemplateValues),
 }
 
-#[derive(Serialize, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, Debug, Default)]
 pub struct UnsecureTemplateValues {
     pub path: String,
     pub token: String,
     pub css: Option<String>,
     pub edit: Option<bool>,
-    pub index: Option<i64>,
-    pub fetch_id: Option<String>,
-    pub create: Option<bool>,
-    pub data_type: Option<DataType>
+    pub data_type: Option<String>,
 }
 
-#[derive(Serialize, Debug, Default, PartialEq)]
+#[derive(Serialize, Debug, Default)]
 pub struct SecureTemplateValues {
     pub data: Option<Data>,
     pub path: Option<String>,
@@ -90,11 +84,12 @@ fn data_display(
     out: &mut dyn Output,
 ) -> Result<(), HandlebarsRenderError> {
     // get parameter from helper or throw an error
-    let value: DataValueCollection = h
+    let value: Data = h
         .param(0)
-        .and_then(|v| v.value().get("value"))
-        .ok_or_else(|| HandlebarsRenderError::new("Value provided as data_input cannot be null"))
-        .and_then(|data| serde_json::value::from_value(data.to_owned()).map_err(|e| e.into()))?;
+        .ok_or_else(|| HandlebarsRenderError::new("Value provided as data_display cannot be null"))
+        .and_then(|data| {
+            serde_json::value::from_value(data.value().to_owned()).map_err(|e| e.into())
+        })?;
 
     out.write(&value.to_string()).map_err(|e| e.into())
 }
@@ -107,32 +102,16 @@ fn data_input(
     out: &mut dyn Output,
 ) -> Result<(), HandlebarsRenderError> {
     // get parameter from helper or throw an error
-    let value: DataValueCollection = h
+    let data: Data = h
         .param(0)
-        .and_then(|v| v.value().get("value"))
         .ok_or_else(|| HandlebarsRenderError::new("Value provided to data_input cannot be null"))
-        .and_then(|data| serde_json::value::from_value(data.to_owned()).map_err(|e| e.into()))?;
-
-    let udv = value
-        .0
-        .iter()
-        .find_map(|dv| {
-            if let DataValue::Unencrypted(udv) = dv {
-                Some(udv)
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| {
-            HandlebarsRenderError::new(
-                "Data provided to data_input helper must be decrypted before use",
-            )
+        .and_then(|data| {
+            serde_json::value::from_value(data.value().to_owned()).map_err(|e| e.into())
         })?;
-
-    match udv {
-        UnencryptedDataValue::Bool(b) => {
+    match data {
+        Data::Bool(b) => {
             out.write("<input type=\"hidden\" name=\"value_type\" value=\"bool\">")?;
-            if *b {
+            if b {
                 out
     		.write("<input type=\"checkbox\" class=\"checkbox\" name=\"value\" value=\"true\" checked autofocus>")
             } else {
@@ -141,28 +120,28 @@ fn data_input(
                 )
             }
         }
-        UnencryptedDataValue::U64(n) => {
+        Data::U64(n) => {
             out.write("<input type=\"hidden\" name=\"value_type\" value=\"u64\">")?;
             out.write(&format!(
                 "<input type=\"number\" class=\"number\" name=\"value\" min=\"0\" value=\"{}\" autofocus>",
                 n
             ))
         }
-        UnencryptedDataValue::I64(n) => {
+        Data::I64(n) => {
             out.write("<input type=\"hidden\" name=\"value_type\" value=\"i64\">")?;
             out.write(&format!(
                 "<input type=\"number\" class=\"number\" name=\"value\" value=\"{}\" autofocus>",
                 n
             ))
         }
-        UnencryptedDataValue::F64(n) => {
+        Data::F64(n) => {
             out.write("<input type=\"hidden\" name=\"value_type\" value=\"f64\">")?;
             out.write(&format!(
                 "<input type=\"number\" class=\"number\" name=\"value\" step=\"any\" value=\"{}\" autofocus>",
                 n
             ))
         }
-        UnencryptedDataValue::String(s) => {
+        Data::String(s) => {
             out.write("<input type=\"hidden\" name=\"value_type\" value=\"string\">")?;
             out.write(&format!(
                 "<input type=\"text\" class=\"text\" name=\"value\" value=\"{}\" autofocus>",

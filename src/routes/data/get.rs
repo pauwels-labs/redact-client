@@ -4,12 +4,11 @@ use crate::{
         UnsecureTemplateValues,
     },
     routes::{
-        DataStorageErrorRejection, IframeTokensDoNotMatchRejection, SessionTokenNotFoundRejection,
+        IframeTokensDoNotMatchRejection, SessionTokenNotFoundRejection, StorageErrorRejection,
     },
     token::TokenGenerator,
 };
-use redact_crypto::KeyStorer;
-use redact_data::{DataStorer, Data, DataValue, DataType, UnencryptedDataValue};
+use redact_crypto::{Data, StorageError, Storer};
 use serde::{Deserialize, Serialize};
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{
@@ -20,10 +19,7 @@ use warp_sessions::{
 struct WithoutTokenQueryParams {
     css: Option<String>,
     edit: Option<bool>,
-    fetch_id: Option<String>,
-    index: Option<i64>,
-    create: Option<bool>,
-    data_type: Option<DataType>
+    data_type: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -35,10 +31,7 @@ struct WithoutTokenPathParams {
 struct WithTokenQueryParams {
     css: Option<String>,
     edit: Option<bool>,
-    index: Option<i64>,
-    fetch_id: Option<String>,
-    create: Option<bool>,
-    data_type: Option<DataType>
+    data_type: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -81,9 +74,6 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                     token: token.clone(),
                     css: query_params.css,
                     edit: query_params.edit,
-                    index: query_params.index,
-                    fetch_id: query_params.fetch_id,
-                    create: query_params.create,
                     data_type: query_params.data_type,
                 };
                 Ok::<_, Rejection>((
@@ -120,12 +110,11 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
         .and_then(warp_sessions::reply::with_session)
 }
 
-pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer, K: KeyStorer>(
+pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
     session_store: S,
     render_engine: R,
     token_generator: T,
-    data_store: D,
-    key_store: K,
+    storer: H,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::any()
         .and(
@@ -148,16 +137,14 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
         ))
         .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
         .and(warp::any().map(move || render_engine.clone()))
-        .and(warp::any().map(move || data_store.clone()))
-        .and(warp::any().map(move || key_store.clone()))
+        .and(warp::any().map(move || storer.clone()))
         .and_then(
             move |path_params: WithTokenPathParams,
                   query_params: WithTokenQueryParams,
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R,
-                  data_store: D,
-                  key_store: K| async move {
+                  storer: H| async move {
                 if let Some(session_token) = session_with_store.session.get::<String>("token") {
                     if session_token != path_params.token {
                         Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
@@ -168,106 +155,55 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer
                     Err(warp::reject::custom(SessionTokenNotFoundRejection))
                 }?;
 
-                if let (Some(_fetch_id), Some(index)) = (query_params.fetch_id.clone(), query_params.index.clone())
-                {
-                    let mut data_collection = data_store
-                        .get_collection(&path_params.path, index, 1)
-                        .await
-                        .map_err(|e| warp::reject::custom(DataStorageErrorRejection(e)))?;
-                    if let Some(data) = data_collection.0.pop() {
-                        let reply = Rendered::new(
-                            render_engine,
-                            RenderTemplate {
-                                name: "secure",
-                                value: TemplateValues::Secure(SecureTemplateValues {
-                                    data: Some(data.clone()),
-                                    path: Some(data.path()),
-                                    token: Some(token.clone()),
-                                    css: query_params.css,
-                                    edit: query_params.edit,
-                                }),
-                            },
-                        )?;
-
-                        Ok::<_, Rejection>((
-                            reply,
-                            path_params,
-                            query_params.edit.unwrap_or(false),
-                            token,
-                            session_with_store,
-                        ))
-                    } else {
-                        Ok::<_, Rejection>((
-                            Rendered::new(
-                                render_engine,
-                                RenderTemplate {
-                                    name: "secure",
-                                    value: TemplateValues::Secure(SecureTemplateValues {
-                                        data: None,
-                                        path: None,
-                                        token: None,
-                                        css: query_params.css,
-                                        edit: query_params.edit,
-                                    }),
-                                },
-                            )?,
-                            path_params,
-                            query_params.edit.unwrap_or(false),
-                            token,
-                            session_with_store,
-                        ))
-                    }
-                } else {
-                    // Non-collection request
-                    let data = data_store
-                        .get(&path_params.path)
-                        .await
-                        .or_else(|err| {
-                            match query_params.create.clone() {
-                                Some(create) => {
-                                    // Ignore errors when creating data because non existing entries
-                                    // throws erroneous errors
-                                    if create {
-                                        Ok(Data::new(
-                                            &path_params.path,
-                                            match query_params.data_type.clone() {
-                                                Some(DataType::String) => DataValue::Unencrypted(UnencryptedDataValue::String("".to_owned())),
-                                                Some(DataType::U64) => DataValue::Unencrypted(UnencryptedDataValue::U64(0)),
-                                                Some(DataType::I64) => DataValue::Unencrypted(UnencryptedDataValue::I64(0)),
-                                                Some(DataType::F64) => DataValue::Unencrypted(UnencryptedDataValue::F64(0.0)),
-                                                Some(DataType::Bool) => DataValue::Unencrypted(UnencryptedDataValue::Bool(true)),
-                                                _ => DataValue::Unencrypted(UnencryptedDataValue::String("".to_owned()))
-                                            }))
-                                    } else {
-                                        Err(err)
-                                    }
-                                }
-                                _ => Err(err)
-                            }
-                        })
-                        .map_err(|e| warp::reject::custom(DataStorageErrorRejection(e)))?;
-                    let reply = Rendered::new(
-                        render_engine,
-                        RenderTemplate {
-                            name: "secure",
-                            value: TemplateValues::Secure(SecureTemplateValues {
-                                data: Some(data.clone()),
-                                path: Some(data.path()),
-                                token: Some(token.clone()),
-                                css: query_params.css,
-                                edit: query_params.edit.clone().or(query_params.create.clone()),
-                            }),
-                        },
-                    )?;
-
-                    Ok::<_, Rejection>((
-                        reply,
-                        path_params,
-                        query_params.edit.or(query_params.create).unwrap_or(false),
-                        token,
-                        session_with_store,
-                    ))
+                let data_entry = match storer.get::<Data>(&path_params.path).await {
+                    Ok(e) => Ok(Some(e)),
+                    Err(e) => match e {
+                        StorageError::NotFound => Ok(None),
+                        _ => Err(e),
+                    },
                 }
+                .map_err(StorageErrorRejection)?;
+
+                let data = match data_entry {
+                    Some(data_entry) => storer
+                        .resolve::<Data>(data_entry.value)
+                        .await
+                        .map_err(StorageErrorRejection)?,
+                    None => {
+                        if let Some(data_type) = query_params.data_type {
+                            match data_type.to_ascii_lowercase().as_ref() {
+                                "bool" => Data::Bool(false),
+                                "u64" => Data::U64(0),
+                                "i64" => Data::I64(0),
+                                "f64" => Data::F64(0.0),
+                                _ => Data::String("".to_owned()),
+                            }
+                        } else {
+                            Data::String("".to_owned())
+                        }
+                    }
+                };
+                let reply = Rendered::new(
+                    render_engine,
+                    RenderTemplate {
+                        name: "secure",
+                        value: TemplateValues::Secure(SecureTemplateValues {
+                            data: Some(data),
+                            path: Some(path_params.path.clone()),
+                            token: Some(token.clone()),
+                            css: query_params.css,
+                            edit: query_params.edit,
+                        }),
+                    },
+                )?;
+
+                Ok::<_, Rejection>((
+                    reply,
+                    path_params,
+                    query_params.edit.unwrap_or(false),
+                    token,
+                    session_with_store,
+                ))
             },
         )
         .untuple_one()
@@ -481,10 +417,11 @@ mod tests {
                 .withf(move |session: &Session| session.id() == expected_sid)
                 .times(1)
                 .return_once(move |_| Ok(()));
-            mock_store
-                .expect_store_session()
-                .times(1)
-                .return_once(|_| Ok(Some("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_string())));
+            mock_store.expect_store_session().times(1).return_once(|_| {
+                Ok(Some(
+                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_string(),
+                ))
+            });
             let session_store = ArcSessionStore(Arc::new(mock_store));
 
             let mut render_engine = MockRenderer::new();
@@ -557,7 +494,7 @@ mod tests {
                         index: None,
                         fetch_id: None,
                         create: None,
-                        data_type: None
+                        data_type: None,
                     });
 
                     template.value == expected_value
@@ -605,7 +542,7 @@ mod tests {
                         index: None,
                         fetch_id: None,
                         create: None,
-                        data_type: None
+                        data_type: None,
                     });
 
                     template.value == expected_value
@@ -653,7 +590,7 @@ mod tests {
                         index: None,
                         fetch_id: None,
                         create: None,
-                        data_type: None
+                        data_type: None,
                     });
                     template.value == expected_value
                 })
@@ -700,7 +637,7 @@ mod tests {
                         index: None,
                         fetch_id: None,
                         create: None,
-                        data_type: None
+                        data_type: None,
                     });
                     template.value == expected_value
                 })

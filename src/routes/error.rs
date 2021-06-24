@@ -1,15 +1,10 @@
-use redact_crypto::StorageError as KeyStorageError;
-use redact_data::StorageError as DataStorageError;
+use redact_crypto::{CryptoError, StorageError};
 use serde_json::Error as JsonSerializationError;
 use warp::reject::Reject;
 
 #[derive(Debug)]
-pub struct KeyStorageErrorRejection(pub KeyStorageError);
-impl Reject for KeyStorageErrorRejection {}
-
-#[derive(Debug)]
-pub struct DataStorageErrorRejection(pub DataStorageError);
-impl Reject for DataStorageErrorRejection {}
+pub struct StorageErrorRejection(pub StorageError);
+impl Reject for StorageErrorRejection {}
 
 #[derive(Debug)]
 pub struct IframeTokensDoNotMatchRejection;
@@ -30,3 +25,7 @@ impl Reject for BadRequestRejection {}
 #[derive(Debug)]
 pub struct SerializationRejection(pub JsonSerializationError);
 impl Reject for SerializationRejection {}
+
+#[derive(Debug)]
+pub struct CryptoErrorRejection(pub CryptoError);
+impl Reject for CryptoErrorRejection {}

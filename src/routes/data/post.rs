@@ -1,15 +1,14 @@
 use crate::{
     render::{RenderTemplate, Rendered, Renderer, SecureTemplateValues, TemplateValues},
     routes::{
-        BadRequestRejection, DataStorageErrorRejection, IframeTokensDoNotMatchRejection,
-        SerializationRejection, SessionTokenNotFoundRejection,
+        BadRequestRejection, CryptoErrorRejection, IframeTokensDoNotMatchRejection,
+        SerializationRejection, SessionTokenNotFoundRejection, StorageErrorRejection,
     },
     token::TokenGenerator,
 };
-use redact_crypto::KeyStorer;
-use redact_data::{Data, DataStorer, DataValue};
+use redact_crypto::{Buildable, Data, States, Storer, SymmetricKey, SymmetricSealer, TypeBuilder};
 use serde::{Deserialize, Serialize};
-use std::convert::{From, TryFrom};
+use std::convert::TryFrom;
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore};
 
@@ -30,18 +29,16 @@ impl TryFrom<SubmitDataBodyParams> for Data {
 
     fn try_from(body: SubmitDataBodyParams) -> Result<Self, Self::Error> {
         if let Some(value) = body.value {
-            let dv = match body.value_type.as_ref() {
-                "bool" => DataValue::from(value.parse::<bool>().or(Err(BadRequestRejection))?),
-                "u64" => DataValue::from(value.parse::<u64>().or(Err(BadRequestRejection))?),
-                "i64" => DataValue::from(value.parse::<i64>().or(Err(BadRequestRejection))?),
-                "f64" => DataValue::from(value.parse::<f64>().or(Err(BadRequestRejection))?),
-                "string" => DataValue::from(value),
+            Ok(match body.value_type.as_ref() {
+                "bool" => Data::Bool(value.parse::<bool>().or(Err(BadRequestRejection))?),
+                "u64" => Data::U64(value.parse::<u64>().or(Err(BadRequestRejection))?),
+                "i64" => Data::I64(value.parse::<i64>().or(Err(BadRequestRejection))?),
+                "f64" => Data::F64(value.parse::<f64>().or(Err(BadRequestRejection))?),
+                "string" => Data::String(value),
                 _ => return Err(BadRequestRejection),
-            };
-
-            Ok(Data::new(&body.path, dv))
+            })
         } else {
-            Ok(Data::new(&body.path, DataValue::from(false)))
+            Ok(Data::Bool(false))
         }
     }
 }
@@ -54,12 +51,11 @@ struct SubmitDataQueryParams {
     fetch_id: Option<String>,
 }
 
-pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer, K: KeyStorer>(
+pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
     session_store: S,
     render_engine: R,
     token_generator: T,
-    data_store: D,
-    keys_store: K,
+    storer: H,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::any()
         .and(warp::path!("data" / String).map(|token| SubmitDataPathParams { token }))
@@ -67,7 +63,8 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
         .and(
             warp::filters::body::form::<SubmitDataBodyParams>().and_then(
                 move |body: SubmitDataBodyParams| async {
-                    Ok::<_, Rejection>(Data::try_from(body)?)
+                    let data_path = body.path.clone();
+                    Ok::<_, Rejection>((Data::try_from(body)?, data_path))
                 },
             ),
         )
@@ -86,26 +83,43 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
         ))
         .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
         .and(warp::any().map(move || render_engine.clone()))
-        .and(warp::any().map(move || data_store.clone()))
-        .and(warp::any().map(move || keys_store.clone()))
+        .and(warp::any().map(move || storer.clone()))
         .and_then(
             move |path_params: SubmitDataPathParams,
                   query_params: SubmitDataQueryParams,
-                  data: Data,
+                  (data, data_path): (Data, String),
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R,
-                  data_store: D,
-                  key_store: K| async move {
+                  storer: H| async move {
                 match session_with_store.session.get("token") {
                     Some::<String>(session_token) => {
                         if session_token != path_params.token {
                             Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
                         } else {
-                            data_store
-                                .create(data.clone())
+                            let key_entry = storer
+                                .get::<SymmetricKey>(".keys.default")
                                 .await
-                                .map_err(DataStorageErrorRejection)
+                                .map_err(StorageErrorRejection)?;
+                            let key: SymmetricKey = storer
+                                .resolve(key_entry.value.clone())
+                                .await
+                                .map_err(StorageErrorRejection)?;
+                            let builder = TypeBuilder::Data(data.builder());
+                            let unsealable = key
+                                .seal(data.clone().into(), Some(key_entry.path))
+                                .map_err(CryptoErrorRejection)?;
+
+                            storer
+                                .create(
+                                    data_path.clone(),
+                                    States::Sealed {
+                                        builder,
+                                        unsealable,
+                                    },
+                                )
+                                .await
+                                .map_err(StorageErrorRejection)
                                 .map(|_| {
                                     Ok::<_, Rejection>((
                                         Rendered::new(
@@ -114,8 +128,8 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
                                                 name: "secure",
                                                 value: TemplateValues::Secure(
                                                     SecureTemplateValues {
-                                                        data: Some(data.clone()),
-                                                        path: Some(data.path()),
+                                                        data: Some(data),
+                                                        path: Some(data_path),
                                                         token: Some(token.clone()),
                                                         css: query_params.css,
                                                         edit: query_params.edit,

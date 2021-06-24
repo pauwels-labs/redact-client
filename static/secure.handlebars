@@ -7,6 +7,9 @@
   <body>
     {{ #if Secure.edit }}
     <form action="/data/{{ Secure.token }}?css={{ Secure.css }}&edit={{ Secure.edit }}" method="POST">
+      {{ #if Secure.relay_url }}
+      <input type="hidden" value="{{ Secure.relay_url }}" id="relay_url" name="relay_url">
+      {{ /if }}
       <input type="hidden" value="{{ Secure.path }}" id="path" name="path">
       {{ data_input Secure.data }}
       {{! {{ #each Secure.key_names }\} }}

@@ -20,6 +20,7 @@ struct WithoutTokenQueryParams {
     css: Option<String>,
     edit: Option<bool>,
     data_type: Option<String>,
+    relay_url: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -32,6 +33,7 @@ struct WithTokenQueryParams {
     css: Option<String>,
     edit: Option<bool>,
     data_type: Option<String>,
+    relay_url: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -75,6 +77,7 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                     css: query_params.css,
                     edit: query_params.edit,
                     data_type: query_params.data_type,
+                    relay_url: query_params.relay_url,
                 };
                 Ok::<_, Rejection>((
                     Rendered::new(
@@ -193,6 +196,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                             token: Some(token.clone()),
                             css: query_params.css,
                             edit: query_params.edit,
+                            relay_url: query_params.relay_url,
                         }),
                     },
                 )?;
@@ -350,6 +354,7 @@ mod tests {
                         ),
                         css: None,
                         edit: None,
+                        relay_url: None,
                     });
                     template.value == expected_value
                 })
@@ -495,6 +500,7 @@ mod tests {
                         fetch_id: None,
                         create: None,
                         data_type: None,
+                        relay_url: None,
                     });
 
                     template.value == expected_value
@@ -543,6 +549,7 @@ mod tests {
                         fetch_id: None,
                         create: None,
                         data_type: None,
+                        relay_url: None,
                     });
 
                     template.value == expected_value
@@ -591,6 +598,7 @@ mod tests {
                         fetch_id: None,
                         create: None,
                         data_type: None,
+                        relay_url: None,
                     });
                     template.value == expected_value
                 })
@@ -638,6 +646,7 @@ mod tests {
                         fetch_id: None,
                         create: None,
                         data_type: None,
+                        relay_url: None,
                     });
                     template.value == expected_value
                 })

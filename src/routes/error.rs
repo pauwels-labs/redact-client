@@ -29,3 +29,7 @@ impl Reject for SerializationRejection {}
 #[derive(Debug)]
 pub struct CryptoErrorRejection(pub CryptoError);
 impl Reject for CryptoErrorRejection {}
+
+#[derive(Debug)]
+pub struct RelayRejection;
+impl Reject for RelayRejection {}

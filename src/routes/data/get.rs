@@ -60,7 +60,7 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                 path: None,
                 secure: false,
                 http_only: true,
-                same_site: Some(SameSiteCookieOption::Strict),
+                same_site: Some(SameSiteCookieOption::None),
             }),
         ))
         .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
@@ -135,7 +135,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                 path: None,
                 secure: false,
                 http_only: true,
-                same_site: Some(SameSiteCookieOption::Strict),
+                same_site: Some(SameSiteCookieOption::None),
             }),
         ))
         .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
@@ -235,7 +235,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                         path: Some(format!("/data/{}", token.clone())),
                         secure: false,
                         http_only: true,
-                        same_site: Some(SameSiteCookieOption::Strict),
+                        same_site: Some(SameSiteCookieOption::None),
                     },
                 };
 

@@ -1,8 +1,9 @@
+mod error_handler;
 pub mod render;
 mod routes;
 pub mod token;
-mod error_handler;
 
+use crate::error_handler::handle_rejection;
 use redact_config::Configurator;
 use redact_crypto::{
     keys::sodiumoxide::SodiumOxideSymmetricKey, Buildable, BytesSources, RedactStorer, States,
@@ -14,7 +15,6 @@ use std::collections::HashMap;
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
-use crate::error_handler::handle_rejection;
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -91,14 +91,24 @@ async fn main() {
     // Create a token generator
     let token_generator = FromThreadRng::new();
 
+    // Create a CORS filter for the insecure routes that allows any origin
+    let unsecure_cors = warp::cors().allow_any_origin().allow_methods(vec!["GET"]);
+
+    // Create a CORS filter for the secure route that allows only localhost origin
+    let secure_cors = warp::cors()
+        .allow_origin("http://localhost")
+        .allow_methods(vec!["GET", "POST"]);
+
     // Build out routes
     let health_route = warp::path!("healthz").map(|| warp::reply::json(&Healthz {}));
-    let post_routes = warp::post().and(routes::data::post::submit_data(
-        session_store.clone(),
-        render_engine.clone(),
-        token_generator.clone(),
-        storer.clone(),
-    ));
+    let post_routes = warp::post()
+        .and(routes::data::post::submit_data(
+            session_store.clone(),
+            render_engine.clone(),
+            token_generator.clone(),
+            storer.clone(),
+        ))
+        .with(secure_cors.clone());
     let get_routes = warp::get().and(
         routes::data::get::with_token(
             session_store.clone(),
@@ -106,11 +116,13 @@ async fn main() {
             token_generator.clone(),
             storer.clone(),
         )
+        .with(unsecure_cors)
         .or(routes::data::get::without_token(
             session_store.clone(),
             render_engine.clone(),
             token_generator.clone(),
-        )),
+        )
+        .with(secure_cors)),
     );
 
     let routes = health_route

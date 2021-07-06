@@ -22,6 +22,7 @@ struct Healthz {}
 fn get_port<T: Configurator>(config: &T) -> u16 {
     match config.get_int("server.port") {
         Ok(port) => {
+            println!("{}", port);
             if (1..65536).contains(&port) {
                 port as u16
             } else {

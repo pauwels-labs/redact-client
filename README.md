@@ -1,6 +1,5 @@
-
 # redact-client
-[![](http://meritbadge.herokuapp.com/redact-client)](https://crates.io/crates/redact-client) [![License: GPL-3.0](https://img.shields.io/badge/License-GPL3.0-yellow.svg)](https://opensource.org/licenses/GPL-3.0) [![Coverage Status](https://coveralls.io/repos/github/pauwels-labs/redact-client/badge.svg?branch=main)](https://coveralls.io/github/pauwels-labs/redact-client?branch=main) [![docs.rs](https://docs.rs/redact-client/badge.svg)](https://docs.rs/redact-client/badge.svg) ![Crates.io](https://img.shields.io/crates/v/redact-client?style=flat-square)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL3.0-yellow.svg)](https://opensource.org/licenses/GPL-3.0) [![Coverage Status](https://coveralls.io/repos/github/pauwels-labs/redact-client/badge.svg?branch=main)](https://coveralls.io/github/pauwels-labs/redact-client?branch=main) [![docs.rs](https://docs.rs/redact-client/badge.svg)](https://docs.rs/redact-client/badge.svg) ![crates.io](https://img.shields.io/crates/v/redact-client?style=flat-square)p
 
 redact-client is a binary that runs locally on a user's device and responds to requests for encrypted data from third-party websites.
 

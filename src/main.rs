@@ -6,8 +6,8 @@ pub mod token;
 use crate::error_handler::handle_rejection;
 use redact_config::Configurator;
 use redact_crypto::{
-    keys::sodiumoxide::SodiumOxideSymmetricKey, Buildable, BytesSources, RedactStorer, States,
-    Storer, SymmetricKey, VectorBytesSource,
+    key::sodiumoxide::SodiumOxideSymmetricKey, ByteSource, HasBuilder, RedactStorer, States,
+    Storer, SymmetricKey, VectorByteSource,
 };
 use render::HandlebarsRenderer;
 use serde::Serialize;
@@ -69,7 +69,7 @@ async fn main() {
         Err(e) => match e {
             _ => {
                 let key = SodiumOxideSymmetricKey::new();
-                let bytes = BytesSources::Vector(VectorBytesSource::new(key.key.as_ref()));
+                let bytes = ByteSource::Vector(VectorByteSource::new(key.key.as_ref()));
                 let builder = key.builder().into();
 
                 storer
@@ -96,7 +96,7 @@ async fn main() {
 
     // Create a CORS filter for the secure route that allows only localhost origin
     let secure_cors = warp::cors()
-        .allow_origin("http://localhost")
+        .allow_origin("http://localhost:8080")
         .allow_methods(vec!["GET", "POST"]);
 
     // Build out routes

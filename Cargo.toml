@@ -46,4 +46,4 @@ base64 = "0.13.0"
 sodiumoxide = "0.2.6"
 http = "0.2.4"
 mockito = "0.30.0"
-redact-crypto = { git = "https://github.com/pauwels-labs/redact-crypto.git", rev = "86105a6b51b1552ac7a2b8ce41c383ae10e56e26" }
+redact-crypto = { git = "https://github.com/pauwels-labs/redact-crypto.git", rev = "767a49c14466c40a962806e7a8cbb5990c80ce6c" }

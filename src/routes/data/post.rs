@@ -16,6 +16,7 @@ use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, 
 
 use std::fs::File;
 use std::io::Read;
+use http::StatusCode;
 
 #[derive(Deserialize, Serialize)]
 struct SubmitDataPathParams {
@@ -105,7 +106,6 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                             let key_entry = storer
                                 .get::<SymmetricKey>(".keys.default")
                                 .await
-<<<<<<< Updated upstream
                                 .map_err(StorageErrorRejection)?;
                             let key: SymmetricKey = storer
                                 .resolve(key_entry.value.clone())
@@ -132,6 +132,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                                 Some(ref url) => {
                                     let mut req_body = HashMap::new();
                                     req_body.insert("path", body_params.path.clone());
+                                    req_body.insert("userId", "abc".to_owned());
 
                                     // tls
                                     let mut buf = Vec::new();
@@ -139,74 +140,42 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                                         .unwrap()
                                         .read_to_end(&mut buf)
                                         .unwrap();
-                                    let pkcs12 = reqwest::Identity::from_pem(&buf)
-                                        .unwrap();
+                                    let pkcs12 = reqwest::Identity::from_pem(&buf).unwrap();
 
                                     let client = reqwest::Client::builder()
                                         .identity(pkcs12)
+                                        .use_rustls_tls()
                                         .build()
                                         .unwrap();
-                                    client
-                                        .post(url)
+                                    // client
+                                    //     .post(url)
+                                    //     .json(&req_body)
+                                    //     .send()
+                                    //     .await
+                                    //     .and_then(|response| response.error_for_status())
+                                    //     .map_err(|_| warp::reject::custom(RelayRejection))?;
+
+                                    let resp = client.post(url.clone())
                                         .json(&req_body)
                                         .send()
                                         .await
-                                        .and_then(|response| response.error_for_status())
-                                        .map_err(|_| warp::reject::custom(RelayRejection))?;
-                                    Ok::<(), RelayRejection>(())
-=======
-                                .map_err(DataStorageErrorRejection);
+                                        .map_err(|_| warp::reject::custom(RelayRejection))
+                                        .and_then(|response| {
+                                            if response.status() != StatusCode::OK {
+                                                Err(warp::reject::custom(RelayRejection))
+                                            } else {
+                                                Ok(response)
+                                            }
+                                        });
 
-                            match res {
-                                Ok(_) => {
-                                    let mut relay_err = false;
-                                    if let Some(relay_url) = relay_url.clone() {
-                                        let mut req_body = HashMap::new();
-                                        req_body.insert("path", data.path());
-                                        req_body.insert("userId", "abc".to_owned());
-                                        let client = reqwest::Client::new();
-                                        let resp = client.post(relay_url.clone())
-                                            .json(&req_body)
-                                            .send()
-                                            .await
-                                            .map_err(|_| warp::reject::custom(RelayRejection))
-                                            .and_then(|response| {
-                                                if response.status() != StatusCode::OK {
-                                                    Err(warp::reject::custom(RelayRejection))
-                                                } else {
-                                                    Ok(response)
-                                                }
-                                            });
-                                        relay_err = resp.is_err();
-                                    }
-
-                                    if relay_err {
+                                    if resp.is_err() {
                                         Err(warp::reject::custom(RelayRejection))
                                     } else {
-                                        Ok::<_, Rejection>((
-                                            Rendered::new(
-                                                render_engine,
-                                                RenderTemplate {
-                                                    name: "secure",
-                                                    value: TemplateValues::Secure(
-                                                        SecureTemplateValues {
-                                                            data: Some(data.clone()),
-                                                            path: Some(data.path()),
-                                                            token: Some(token.clone()),
-                                                            css: query_params.css,
-                                                            edit: query_params.edit,
-                                                            relay_url
-                                                        },
-                                                    ),
-                                                },
-                                            )?,
-                                            path_params,
-                                            token,
-                                            session_with_store,
-                                        ))
+                                        let body = resp.unwrap().text().await.unwrap();
+                                        println!("{}", body);
+                                        Ok(())
                                     }
 
->>>>>>> Stashed changes
                                 }
                                 None => Ok(()),
                             }?;

@@ -1,27 +1,25 @@
+use crate::routes::error::RelayRejection;
 use crate::{
     render::{RenderTemplate, Rendered, Renderer, SecureTemplateValues, TemplateValues},
     routes::{
-        BadRequestRejection, DataStorageErrorRejection, IframeTokensDoNotMatchRejection,
-        SerializationRejection, SessionTokenNotFoundRejection,
+        BadRequestRejection, CryptoErrorRejection, IframeTokensDoNotMatchRejection,
+        SerializationRejection, SessionTokenNotFoundRejection, StorageErrorRejection,
     },
     token::TokenGenerator,
 };
-use redact_crypto::KeyStorer;
-use redact_data::{Data, DataStorer, DataValue};
+use redact_crypto::{Data, HasBuilder, States, Storer, SymmetricKey, SymmetricSealer, TypeBuilder};
 use serde::{Deserialize, Serialize};
-use std::convert::{From, TryFrom};
+use std::collections::HashMap;
+use std::convert::TryFrom;
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore};
-use std::collections::HashMap;
-use crate::routes::error::RelayRejection;
-use http::{StatusCode};
 
 #[derive(Deserialize, Serialize)]
 struct SubmitDataPathParams {
     token: String,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 struct SubmitDataBodyParams {
     path: String,
     value: Option<String>,
@@ -34,18 +32,16 @@ impl TryFrom<SubmitDataBodyParams> for Data {
 
     fn try_from(body: SubmitDataBodyParams) -> Result<Self, Self::Error> {
         if let Some(value) = body.value {
-            let dv = match body.value_type.as_ref() {
-                "bool" => DataValue::from(value.parse::<bool>().or(Err(BadRequestRejection))?),
-                "u64" => DataValue::from(value.parse::<u64>().or(Err(BadRequestRejection))?),
-                "i64" => DataValue::from(value.parse::<i64>().or(Err(BadRequestRejection))?),
-                "f64" => DataValue::from(value.parse::<f64>().or(Err(BadRequestRejection))?),
-                "string" => DataValue::from(value),
+            Ok(match body.value_type.as_ref() {
+                "bool" => Data::Bool(value.parse::<bool>().or(Err(BadRequestRejection))?),
+                "u64" => Data::U64(value.parse::<u64>().or(Err(BadRequestRejection))?),
+                "i64" => Data::I64(value.parse::<i64>().or(Err(BadRequestRejection))?),
+                "f64" => Data::F64(value.parse::<f64>().or(Err(BadRequestRejection))?),
+                "string" => Data::String(value),
                 _ => return Err(BadRequestRejection),
-            };
-
-            Ok(Data::new(&body.path, dv))
+            })
         } else {
-            Ok(Data::new(&body.path, DataValue::from(false)))
+            Ok(Data::Bool(false))
         }
     }
 }
@@ -58,12 +54,11 @@ struct SubmitDataQueryParams {
     fetch_id: Option<String>,
 }
 
-pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStorer, K: KeyStorer>(
+pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
     session_store: S,
     render_engine: R,
     token_generator: T,
-    data_store: D,
-    keys_store: K,
+    storer: H,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::any()
         .and(warp::path!("data" / String).map(|token| SubmitDataPathParams { token }))
@@ -71,8 +66,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
         .and(
             warp::filters::body::form::<SubmitDataBodyParams>().and_then(
                 move |body: SubmitDataBodyParams| async {
-                    let relay_url = body.relay_url.clone();
-                    Ok::<_, Rejection>((relay_url, Data::try_from(body)?))
+                    Ok::<_, Rejection>((body.clone(), Data::try_from(body)?))
                 },
             ),
         )
@@ -86,86 +80,85 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
                 path: None,
                 secure: false,
                 http_only: true,
-                same_site: Some(SameSiteCookieOption::Strict),
+                same_site: Some(SameSiteCookieOption::None),
             }),
         ))
         .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
         .and(warp::any().map(move || render_engine.clone()))
-        .and(warp::any().map(move || data_store.clone()))
-        .and(warp::any().map(move || keys_store.clone()))
+        .and(warp::any().map(move || storer.clone()))
         .and_then(
             move |path_params: SubmitDataPathParams,
                   query_params: SubmitDataQueryParams,
-                  request_info: (Option<String>, Data),
+                  (body_params, data): (SubmitDataBodyParams, Data),
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R,
-                  data_store: D,
-                  key_store: K| async move {
-                let data = request_info.1;
-                let relay_url = request_info.0;
-
+                  storer: H| async move {
                 match session_with_store.session.get("token") {
                     Some::<String>(session_token) => {
                         if session_token != path_params.token {
                             Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
                         } else {
-                            let res = data_store
-                                .create(data.clone())
+                            let key_entry = storer
+                                .get::<SymmetricKey>(".keys.default.")
                                 .await
-                                .map_err(DataStorageErrorRejection);
+                                .map_err(StorageErrorRejection)?;
+                            let key: SymmetricKey = storer
+                                .resolve(key_entry.value.clone())
+                                .await
+                                .map_err(StorageErrorRejection)?;
+                            let builder = TypeBuilder::Data(data.builder());
+                            let unsealable = key
+                                .seal(data.clone().into(), None, Some(key_entry.path))
+                                .map_err(CryptoErrorRejection)?;
 
-                            match res {
-                                Ok(_) => {
-                                    let mut relay_err = false;
-                                    if let Some(relay_url) = relay_url.clone() {
-                                        let mut req_body = HashMap::new();
-                                        req_body.insert("path", data.path());
-                                        let client = reqwest::Client::new();
-                                        let resp = client.post(relay_url.clone())
-                                            .json(&req_body)
-                                            .send()
-                                            .await
-                                            .map_err(|_| warp::reject::custom(RelayRejection))
-                                            .and_then(|response| {
-                                                if response.status() != StatusCode::OK {
-                                                    Err(warp::reject::custom(RelayRejection))
-                                                } else {
-                                                    Ok(response)
-                                                }
-                                            });
-                                        relay_err = resp.is_err();
-                                    }
+                            storer
+                                .create(
+                                    body_params.path.clone(),
+                                    States::Sealed {
+                                        builder,
+                                        unsealable,
+                                    },
+                                )
+                                .await
+                                .map_err(StorageErrorRejection)?;
 
-                                    if relay_err {
-                                        Err(warp::reject::custom(RelayRejection))
-                                    } else {
-                                        Ok::<_, Rejection>((
-                                            Rendered::new(
-                                                render_engine,
-                                                RenderTemplate {
-                                                    name: "secure",
-                                                    value: TemplateValues::Secure(
-                                                        SecureTemplateValues {
-                                                            data: Some(data.clone()),
-                                                            path: Some(data.path()),
-                                                            token: Some(token.clone()),
-                                                            css: query_params.css,
-                                                            edit: query_params.edit,
-                                                            relay_url
-                                                        },
-                                                    ),
-                                                },
-                                            )?,
-                                            path_params,
-                                            token,
-                                            session_with_store,
-                                        ))
-                                    }
-
+                            match body_params.relay_url {
+                                Some(ref url) => {
+                                    let mut req_body = HashMap::new();
+                                    req_body.insert("path", body_params.path.clone());
+                                    let client = reqwest::Client::new();
+                                    client
+                                        .post(url)
+                                        .json(&req_body)
+                                        .send()
+                                        .await
+                                        .and_then(|response| response.error_for_status())
+                                        .map_err(|_| warp::reject::custom(RelayRejection))?;
+                                    Ok::<(), RelayRejection>(())
                                 }
-                                Err(e) => Err(warp::reject::custom(e))
-                            }
+                                None => Ok(()),
+                            }?;
+
+                            Ok::<_, Rejection>((
+                                Rendered::new(
+                                    render_engine,
+                                    RenderTemplate {
+                                        name: "secure",
+                                        value: TemplateValues::Secure(SecureTemplateValues {
+                                            data: Some(data),
+                                            path: Some(body_params.path),
+                                            token: Some(token.clone()),
+                                            css: query_params.css,
+                                            edit: query_params.edit,
+                                            relay_url: body_params.relay_url,
+                                        }),
+                                    },
+                                )?,
+                                path_params,
+                                token,
+                                session_with_store,
+                            ))
                         }
                     }
                     None => Err(warp::reject::custom(SessionTokenNotFoundRejection)),
@@ -193,7 +186,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
                         path: Some(format!("/data/{}", token.clone())),
                         secure: false,
                         http_only: true,
-                        same_site: Some(SameSiteCookieOption::Strict),
+                        same_site: Some(SameSiteCookieOption::None),
                     },
                 };
 
@@ -213,16 +206,18 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, D: DataStore
 
 #[cfg(test)]
 mod tests {
-    use crate::render::{
-        tests::MockRenderer
-    };
+    use crate::render::tests::MockRenderer;
     use crate::routes::data::post;
     use crate::token::tests::MockTokenGenerator;
     use async_trait::async_trait;
     use mockall::predicate::*;
     use mockall::*;
-    use redact_crypto::storage::tests::MockKeyStorer;
-    use redact_data::{storage::tests::MockDataStorer};
+    use redact_crypto::{
+        key::sodiumoxide::{SodiumOxideSymmetricKey, SodiumOxideSymmetricKeyBuilder},
+        storage::tests::MockStorer,
+        ByteSource, Entry, HasIndex, KeyBuilder, States, SymmetricKey, SymmetricKeyBuilder,
+        TypeBuilder, VectorByteSource,
+    };
     use serde::Serialize;
 
     use std::{
@@ -275,21 +270,16 @@ mod tests {
         }
     }
 
-
     #[tokio::test]
     async fn test_submit_data() {
-
-        #[cfg(not(test))]
-        let url = "https://xyz.xyz";
-        
         #[cfg(test)]
         let mock_url = &mockito::server_url();
         let token = "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D";
-        let data_path = ".TestKey.";
+        let data_path = ".testKey.";
 
         let m = mock("POST", "/redact/relay")
             .with_status(200)
-            .match_body(Matcher::Json(serde_json::json!({"path": data_path})))
+            .match_body(Matcher::Json(serde_json::json!({ "path": data_path })))
             .create();
 
         let mut session = Session::new();
@@ -320,38 +310,48 @@ mod tests {
             .times(1)
             .return_once(move |_| Ok("".to_string()));
 
-        let mut data_storer = MockDataStorer::new();
-        data_storer
-            .expect_create()
+        let mut storer = MockStorer::new();
+        storer
+            .expect_get_indexed::<SymmetricKey>()
             .times(1)
-            .returning(|_| Ok(true));
+            .withf(|path, index| {
+                path == ".keys.default." && *index == Some(SymmetricKey::get_index().unwrap())
+            })
+            .returning(|_, _| {
+                let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
+                    SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
+                ));
+                let sosk = SodiumOxideSymmetricKey::new();
+                Ok(Entry {
+                    path: ".keys.default.".to_owned(),
+                    value: States::Unsealed {
+                        builder,
+                        bytes: ByteSource::Vector(VectorByteSource::new(sosk.key.as_ref())),
+                    },
+                })
+            });
+        storer.expect_create().times(1).returning(|_, _| Ok(true));
 
         let mut token_generator = MockTokenGenerator::new();
-        token_generator
-            .expect_generate_token()
-            .returning(|| {
-                Ok(
-                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
-                        .to_owned(),
-                )
-            });
-
-        let mut key_storer = MockKeyStorer::new();
-        key_storer.expect_get().times(0);
+        token_generator.expect_generate_token().returning(|| {
+            Ok("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D".to_owned())
+        });
 
         let submit_data = post::submit_data(
             session_store,
             Arc::new(render_engine),
             Arc::new(token_generator),
-            Arc::new(data_storer),
-            Arc::new(key_storer)
+            Arc::new(storer),
         );
 
         let res = warp::test::request()
             .method("POST")
             .path("/data/E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D")
             .header("cookie", "sid=testSID")
-            .body(format!("relay_url={}%2Fredact%2Frelay&path={}&value_type=string&value=qew&submit=Submit", mock_url, data_path))
+            .body(format!(
+                "relay_url={}%2Fredact%2Frelay&path={}&value_type=string&value=qew&submit=Submit",
+                mock_url, data_path
+            ))
             .reply(&submit_data)
             .await;
 

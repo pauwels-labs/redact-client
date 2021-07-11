@@ -266,8 +266,10 @@ mod tests {
         use async_trait::async_trait;
         use mockall::predicate::*;
         use mockall::*;
-        use redact_crypto::storage::tests::MockKeyStorer;
-        use redact_data::{storage::tests::MockDataStorer, Data, StorageError};
+        use redact_crypto::{
+            storage::tests::MockStorer, ByteSource, Data, DataBuilder, Entry, HasIndex, States,
+            StorageError, StringDataBuilder, TypeBuilder, VectorByteSource,
+        };
         use serde::Serialize;
 
         use std::{
@@ -346,7 +348,7 @@ mod tests {
                 .expect_render()
                 .withf(move |template: &RenderTemplate| {
                     let expected_value = TemplateValues::Secure(SecureTemplateValues {
-                        data: Some(Data::new(".testKey.", "someval".into())),
+                        data: Some(Data::String("someval".into())),
                         path: Some(".testKey.".to_owned()),
                         token: Some(
                             "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
@@ -372,26 +374,32 @@ mod tests {
                     )
                 });
 
-            let mut data_storer = MockDataStorer::new();
-            data_storer
-                .expect_get()
+            let mut storer = MockStorer::new();
+            storer
+                .expect_get_indexed::<Data>()
                 .times(1)
-                .with(predicate::eq(".testKey."))
-                .returning(|_| Ok(Data::new(".testKey.", "someval".into())));
-
-            let mut key_storer = MockKeyStorer::new();
-            key_storer.expect_get().times(0);
+                .withf(|path, index| {
+                    path == ".testKey." && *index == Some(Data::get_index().unwrap())
+                })
+                .returning(|_, _| {
+                    let builder = TypeBuilder::Data(DataBuilder::String(StringDataBuilder {}));
+                    Ok(Entry {
+                        path: ".testKey.".to_owned(),
+                        value: States::Unsealed {
+                            builder,
+                            bytes: ByteSource::Vector(VectorByteSource::new(b"someval")),
+                        },
+                    })
+                });
 
             let with_token_filter = get::with_token(
                 session_store,
                 Arc::new(render_engine),
                 Arc::new(token_generator),
-                Arc::new(data_storer),
-                Arc::new(key_storer),
+                Arc::new(storer),
             );
 
             let res = warp::test::request()
-                    .method("POST")
                     .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C")
                     .header("cookie", "sid=testSID")
                     .reply(&with_token_filter)
@@ -422,11 +430,6 @@ mod tests {
                 .withf(move |session: &Session| session.id() == expected_sid)
                 .times(1)
                 .return_once(move |_| Ok(()));
-            mock_store.expect_store_session().times(1).return_once(|_| {
-                Ok(Some(
-                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_string(),
-                ))
-            });
             let session_store = ArcSessionStore(Arc::new(mock_store));
 
             let mut render_engine = MockRenderer::new();
@@ -446,26 +449,23 @@ mod tests {
                     )
                 });
 
-            let mut data_storer = MockDataStorer::new();
-            data_storer
-                .expect_get()
+            let mut storer = MockStorer::new();
+            storer
+                .expect_get_indexed::<Data>()
                 .times(1)
-                .with(predicate::eq(".testKey."))
-                .returning(|_| Err(StorageError::NotFound));
-
-            let mut key_storer = MockKeyStorer::new();
-            key_storer.expect_get().times(0);
+                .withf(|path, index| {
+                    path == ".testKey." && *index == Some(Data::get_index().unwrap())
+                })
+                .returning(|_, _| Err(StorageError::NotFound));
 
             let with_token_filter = get::with_token(
                 session_store,
                 Arc::new(render_engine),
                 Arc::new(token_generator),
-                Arc::new(data_storer),
-                Arc::new(key_storer),
+                Arc::new(storer),
             );
 
             let res = warp::test::request()
-                .method("POST")
                 .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C?create=true&data_type=String")
                 .header("cookie", "sid=testSID")
                 .reply(&with_token_filter)
@@ -496,9 +496,6 @@ mod tests {
                             .to_owned(),
                         css: None,
                         edit: None,
-                        index: None,
-                        fetch_id: None,
-                        create: None,
                         data_type: None,
                         relay_url: None,
                     });
@@ -545,9 +542,6 @@ mod tests {
                             .to_owned(),
                         css: Some("p { color: red; }".to_owned()),
                         edit: None,
-                        index: None,
-                        fetch_id: None,
-                        create: None,
                         data_type: None,
                         relay_url: None,
                     });
@@ -594,9 +588,6 @@ mod tests {
                             .to_owned(),
                         css: None,
                         edit: Some(true),
-                        index: None,
-                        fetch_id: None,
-                        create: None,
                         data_type: None,
                         relay_url: None,
                     });
@@ -642,9 +633,6 @@ mod tests {
                             .to_owned(),
                         css: None,
                         edit: Some(false),
-                        index: None,
-                        fetch_id: None,
-                        create: None,
                         data_type: None,
                         relay_url: None,
                     });

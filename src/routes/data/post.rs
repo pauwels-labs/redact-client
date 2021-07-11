@@ -100,7 +100,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                             Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
                         } else {
                             let key_entry = storer
-                                .get::<SymmetricKey>(".keys.default")
+                                .get::<SymmetricKey>(".keys.default.")
                                 .await
                                 .map_err(StorageErrorRejection)?;
                             let key: SymmetricKey = storer
@@ -204,142 +204,158 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
         .and_then(warp_sessions::reply::with_session)
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::render::tests::MockRenderer;
-//     use crate::routes::data::post;
-//     use crate::token::tests::MockTokenGenerator;
-//     use async_trait::async_trait;
-//     use mockall::predicate::*;
-//     use mockall::*;
-//     use redact_crypto::storage::tests::MockKeyStorer;
-//     use redact_data::storage::tests::MockDataStorer;
-//     use serde::Serialize;
+#[cfg(test)]
+mod tests {
+    use crate::render::tests::MockRenderer;
+    use crate::routes::data::post;
+    use crate::token::tests::MockTokenGenerator;
+    use async_trait::async_trait;
+    use mockall::predicate::*;
+    use mockall::*;
+    use redact_crypto::{
+        key::sodiumoxide::{SodiumOxideSymmetricKey, SodiumOxideSymmetricKeyBuilder},
+        storage::tests::MockStorer,
+        ByteSource, Entry, HasIndex, KeyBuilder, States, SymmetricKey, SymmetricKeyBuilder,
+        TypeBuilder, VectorByteSource,
+    };
+    use serde::Serialize;
 
-//     use std::{
-//         fmt::{self, Debug, Formatter},
-//         sync::Arc,
-//     };
-//     use warp_sessions::{ArcSessionStore, Session, SessionStore};
+    use std::{
+        fmt::{self, Debug, Formatter},
+        sync::Arc,
+    };
+    use warp_sessions::{ArcSessionStore, Session, SessionStore};
 
-//     #[cfg(test)]
-//     use mockito::{mock, Matcher};
+    #[cfg(test)]
+    use mockito::{mock, Matcher};
 
-//     mock! {
-//                 pub SessionStore {}
+    mock! {
+                pub SessionStore {}
 
-//     #[async_trait]
-//     impl SessionStore for SessionStore {
-//                 async fn load_session(&self, cookie_value: String) -> async_session::Result<Option<Session>>;
-//                 async fn store_session(&self, session: Session) -> async_session::Result<Option<String>>;
-//                 async fn destroy_session(&self, session: Session) -> async_session::Result;
-//                 async fn clear_store(&self) -> async_session::Result;
-//             }
+    #[async_trait]
+    impl SessionStore for SessionStore {
+                async fn load_session(&self, cookie_value: String) -> async_session::Result<Option<Session>>;
+                async fn store_session(&self, session: Session) -> async_session::Result<Option<String>>;
+                async fn destroy_session(&self, session: Session) -> async_session::Result;
+                async fn clear_store(&self) -> async_session::Result;
+            }
 
-//                         impl Debug for SessionStore {
-//                             fn fmt<'a>(&self, f: &mut Formatter<'a>) -> fmt::Result;
-//                         }
+                        impl Debug for SessionStore {
+                            fn fmt<'a>(&self, f: &mut Formatter<'a>) -> fmt::Result;
+                        }
 
-//                         impl Clone for SessionStore {
-//                             fn clone(&self) -> Self;
-//                         }
-//                         }
+                        impl Clone for SessionStore {
+                            fn clone(&self) -> Self;
+                        }
+                        }
 
-//     mock! {
-//         pub Session {
-//             fn new() -> Self;
-//                     fn id_from_cookie_value(string: &str) -> Result<String, base64::DecodeError>;
-//                     fn destroy(&mut self);
-//                     fn is_destroyed(&self) -> bool;
-//             fn id(&self) -> &str;
-//             fn insert<T: Serialize +'static>(&mut self, key: &str, value: T) -> Result<(), serde_json::Error>;
-//             fn insert_raw(&mut self, key: &str, value: String);
-//             fn get<T: serde::de::DeserializeOwned + 'static>(&self, key: &str) -> Option<T>;
-//             fn get_raw(&self, key: &str) -> Option<String>;
-//         }
+    mock! {
+        pub Session {
+            fn new() -> Self;
+                    fn id_from_cookie_value(string: &str) -> Result<String, base64::DecodeError>;
+                    fn destroy(&mut self);
+                    fn is_destroyed(&self) -> bool;
+            fn id(&self) -> &str;
+            fn insert<T: Serialize +'static>(&mut self, key: &str, value: T) -> Result<(), serde_json::Error>;
+            fn insert_raw(&mut self, key: &str, value: String);
+            fn get<T: serde::de::DeserializeOwned + 'static>(&self, key: &str) -> Option<T>;
+            fn get_raw(&self, key: &str) -> Option<String>;
+        }
 
-//     impl Clone for Session {
-//         fn clone(&self) -> Self;
-//     }
-//         impl Debug for Session {
-//             fn fmt<'a>(&self, f: &mut Formatter<'a>) -> fmt::Result;
-//         }
-//     }
+    impl Clone for Session {
+        fn clone(&self) -> Self;
+    }
+        impl Debug for Session {
+            fn fmt<'a>(&self, f: &mut Formatter<'a>) -> fmt::Result;
+        }
+    }
 
-//     #[tokio::test]
-//     async fn test_submit_data() {
-//         #[cfg(not(test))]
-//         let url = "https://xyz.xyz";
+    #[tokio::test]
+    async fn test_submit_data() {
+        #[cfg(test)]
+        let mock_url = &mockito::server_url();
+        let token = "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D";
+        let data_path = ".testKey.";
 
-//         #[cfg(test)]
-//         let mock_url = &mockito::server_url();
-//         let token = "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D";
-//         let data_path = ".TestKey.";
+        let m = mock("POST", "/redact/relay")
+            .with_status(200)
+            .match_body(Matcher::Json(serde_json::json!({ "path": data_path })))
+            .create();
 
-//         let m = mock("POST", "/redact/relay")
-//             .with_status(200)
-//             .match_body(Matcher::Json(serde_json::json!({ "path": data_path })))
-//             .create();
+        let mut session = Session::new();
+        session.set_cookie_value("testSID".to_owned());
+        session.insert("token", token).unwrap();
+        let expected_sid = session.id().to_owned();
 
-//         let mut session = Session::new();
-//         session.set_cookie_value("testSID".to_owned());
-//         session.insert("token", token).unwrap();
-//         let expected_sid = session.id().to_owned();
+        let mut mock_store = MockSessionStore::new();
+        mock_store
+            .expect_load_session()
+            .with(predicate::eq("testSID".to_owned()))
+            .times(1)
+            .return_once(move |_| Ok(Some(session)));
+        mock_store
+            .expect_destroy_session()
+            .withf(move |session: &Session| session.id() == expected_sid)
+            .times(1)
+            .return_once(move |_| Ok(()));
+        mock_store
+            .expect_store_session()
+            .times(1)
+            .return_once(move |_| Ok(Some(token.to_string())));
+        let session_store = ArcSessionStore(Arc::new(mock_store));
 
-//         let mut mock_store = MockSessionStore::new();
-//         mock_store
-//             .expect_load_session()
-//             .with(predicate::eq("testSID".to_owned()))
-//             .times(1)
-//             .return_once(move |_| Ok(Some(session)));
-//         mock_store
-//             .expect_destroy_session()
-//             .withf(move |session: &Session| session.id() == expected_sid)
-//             .times(1)
-//             .return_once(move |_| Ok(()));
-//         mock_store
-//             .expect_store_session()
-//             .times(1)
-//             .return_once(move |_| Ok(Some(token.to_string())));
-//         let session_store = ArcSessionStore(Arc::new(mock_store));
+        let mut render_engine = MockRenderer::new();
+        render_engine
+            .expect_render()
+            .times(1)
+            .return_once(move |_| Ok("".to_string()));
 
-//         let mut render_engine = MockRenderer::new();
-//         render_engine
-//             .expect_render()
-//             .times(1)
-//             .return_once(move |_| Ok("".to_string()));
+        let mut storer = MockStorer::new();
+        storer
+            .expect_get_indexed::<SymmetricKey>()
+            .times(1)
+            .withf(|path, index| {
+                path == ".keys.default." && *index == Some(SymmetricKey::get_index().unwrap())
+            })
+            .returning(|_, _| {
+                let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
+                    SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
+                ));
+                let sosk = SodiumOxideSymmetricKey::new();
+                Ok(Entry {
+                    path: ".keys.default.".to_owned(),
+                    value: States::Unsealed {
+                        builder,
+                        bytes: ByteSource::Vector(VectorByteSource::new(sosk.key.as_ref())),
+                    },
+                })
+            });
+        storer.expect_create().times(1).returning(|_, _| Ok(true));
 
-//         let mut data_storer = MockDataStorer::new();
-//         data_storer.expect_create().times(1).returning(|_| Ok(true));
+        let mut token_generator = MockTokenGenerator::new();
+        token_generator.expect_generate_token().returning(|| {
+            Ok("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D".to_owned())
+        });
 
-//         let mut token_generator = MockTokenGenerator::new();
-//         token_generator.expect_generate_token().returning(|| {
-//             Ok("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D".to_owned())
-//         });
+        let submit_data = post::submit_data(
+            session_store,
+            Arc::new(render_engine),
+            Arc::new(token_generator),
+            Arc::new(storer),
+        );
 
-//         let mut key_storer = MockKeyStorer::new();
-//         key_storer.expect_get().times(0);
+        let res = warp::test::request()
+            .method("POST")
+            .path("/data/E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D")
+            .header("cookie", "sid=testSID")
+            .body(format!(
+                "relay_url={}%2Fredact%2Frelay&path={}&value_type=string&value=qew&submit=Submit",
+                mock_url, data_path
+            ))
+            .reply(&submit_data)
+            .await;
 
-//         let submit_data = post::submit_data(
-//             session_store,
-//             Arc::new(render_engine),
-//             Arc::new(token_generator),
-//             Arc::new(data_storer),
-//             Arc::new(key_storer),
-//         );
-
-//         let res = warp::test::request()
-//             .method("POST")
-//             .path("/data/E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D")
-//             .header("cookie", "sid=testSID")
-//             .body(format!(
-//                 "relay_url={}%2Fredact%2Frelay&path={}&value_type=string&value=qew&submit=Submit",
-//                 mock_url, data_path
-//             ))
-//             .reply(&submit_data)
-//             .await;
-
-//         assert_eq!(res.status(), 200);
-//         m.assert();
-//     }
-// }
+        assert_eq!(res.status(), 200);
+        m.assert();
+    }
+}

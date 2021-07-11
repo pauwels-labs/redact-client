@@ -109,7 +109,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                                 .map_err(StorageErrorRejection)?;
                             let builder = TypeBuilder::Data(data.builder());
                             let unsealable = key
-                                .seal(data.clone().into(), Some(key_entry.path))
+                                .seal(data.clone().into(), None, Some(key_entry.path))
                                 .map_err(CryptoErrorRejection)?;
 
                             storer

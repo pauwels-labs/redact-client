@@ -91,7 +91,7 @@ spec:
           resources: {}
           script: |
             #!/bin/sh
-            cargo publish
+            cargo publish --no-verify
         volumes:
         - name: coveralls-repo-tokens
           secret:

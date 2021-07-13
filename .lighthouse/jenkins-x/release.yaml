@@ -93,7 +93,6 @@ spec:
           resources: {}
           script: |
             #!/bin/sh
-            sleep 999999
             cargo publish --no-verify
         volumes:
         - name: coveralls-repo-tokens

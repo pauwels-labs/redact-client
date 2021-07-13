@@ -14,13 +14,13 @@ RUN USER=root cargo new service
 WORKDIR /usr/src/service
 COPY Cargo.lock Cargo.toml ./
 RUN echo "fn main() {println!(\"if you see this, the image build failed and kept the depency-caching entrypoint. check your dockerfile and image build logs.\")}" > src/main.rs
-RUN cargo build --release
+RUN cargo build --release --locked
 
 # Load source code to create final binary
 RUN rm -rf src
 RUN rm -rf target/release/deps/service
 COPY src src
-RUN cargo build --release
+RUN cargo build --release --locked
 
 # Create alpine debug image
 # This should be scratch in prod

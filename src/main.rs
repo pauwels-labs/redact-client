@@ -2,6 +2,7 @@ mod error_handler;
 pub mod render;
 mod routes;
 pub mod token;
+mod relayer;
 
 use crate::error_handler::handle_rejection;
 use redact_config::Configurator;
@@ -15,6 +16,7 @@ use std::collections::HashMap;
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
+use crate::relayer::MutualTLSRelayer;
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -56,6 +58,10 @@ async fn main() {
     template_mapping.insert("unsecure", "./static/unsecure.handlebars");
     template_mapping.insert("secure", "./static/secure.handlebars");
     let render_engine = HandlebarsRenderer::new(template_mapping).unwrap();
+
+    // Create an in-memory session store
+    let relayer = MutualTLSRelayer::new("keys/client.pem".to_owned())
+        .unwrap();
 
     // Get storage handle
     let storage_url = config.get_str("storage.url").unwrap();
@@ -107,6 +113,7 @@ async fn main() {
             render_engine.clone(),
             token_generator.clone(),
             storer.clone(),
+            relayer.clone()
         ))
         .with(secure_cors.clone());
     let get_routes = warp::get().and(
@@ -116,7 +123,7 @@ async fn main() {
             token_generator.clone(),
             storer.clone(),
         )
-        .with(unsecure_cors)
+        .with(unsecure_cors.clone())
         .or(routes::data::get::without_token(
             session_store.clone(),
             render_engine.clone(),
@@ -125,9 +132,15 @@ async fn main() {
         .with(secure_cors)),
     );
 
+    let proxy_routes = warp::post().and(
+        routes::proxy::post(relayer)
+            .with(unsecure_cors)
+    );
+
     let routes = health_route
         .or(get_routes)
         .or(post_routes)
+        .or(proxy_routes)
         .with(warp::log("routes"))
         .recover(handle_rejection);
 

@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore};
+use crate::relayer::Relayer;
 
 #[derive(Deserialize, Serialize)]
 struct SubmitDataPathParams {
@@ -54,11 +55,12 @@ struct SubmitDataQueryParams {
     fetch_id: Option<String>,
 }
 
-pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
+pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q: Relayer>(
     session_store: S,
     render_engine: R,
     token_generator: T,
     storer: H,
+    relayer: Q
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::any()
         .and(warp::path!("data" / String).map(|token| SubmitDataPathParams { token }))
@@ -86,6 +88,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
         .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
         .and(warp::any().map(move || render_engine.clone()))
         .and(warp::any().map(move || storer.clone()))
+        .and(warp::any().map(move || relayer.clone()))
         .and_then(
             move |path_params: SubmitDataPathParams,
                   query_params: SubmitDataQueryParams,
@@ -93,7 +96,8 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R,
-                  storer: H| async move {
+                  storer: H,
+                  relayer: Q| async move {
                 match session_with_store.session.get("token") {
                     Some::<String>(session_token) => {
                         if session_token != path_params.token {
@@ -123,22 +127,11 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                                 .await
                                 .map_err(StorageErrorRejection)?;
 
-                            match body_params.relay_url {
-                                Some(ref url) => {
-                                    let mut req_body = HashMap::new();
-                                    req_body.insert("path", body_params.path.clone());
-                                    let client = reqwest::Client::new();
-                                    client
-                                        .post(url)
-                                        .json(&req_body)
-                                        .send()
-                                        .await
-                                        .and_then(|response| response.error_for_status())
-                                        .map_err(|_| warp::reject::custom(RelayRejection))?;
-                                    Ok::<(), RelayRejection>(())
-                                }
-                                None => Ok(()),
-                            }?;
+                            if let Some(relay_url) = body_params.relay_url.clone() {
+                                relayer.relay(body_params.path.clone(), relay_url)
+                                .await
+                                .map_err(|_| warp::reject::custom(RelayRejection))?;
+                            }
 
                             Ok::<_, Rejection>((
                                 Rendered::new(

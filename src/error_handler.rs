@@ -5,6 +5,7 @@ use serde::Serialize;
 use std::convert::Infallible;
 use warp::http::StatusCode;
 use warp::{Rejection, Reply};
+use crate::routes::error::RelayRejection;
 
 /// An API error serializable to JSON.
 #[derive(Serialize)]
@@ -31,6 +32,9 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
     } else if err.find::<BadRequestRejection>().is_some() {
         code = StatusCode::BAD_REQUEST;
         message = "BAD REQUEST";
+    } else if err.find::<RelayRejection>().is_some() {
+        code = StatusCode::INTERNAL_SERVER_ERROR;
+        message = "INTERNAL SERVER ERROR - Relay Error";
     } else {
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = "INTERNAL SERVER ERROR";

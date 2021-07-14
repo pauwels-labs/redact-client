@@ -20,13 +20,13 @@ pub enum RenderError {
 
 impl Reject for RenderError {}
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, PartialEq)]
 pub enum TemplateValues {
     Unsecure(UnsecureTemplateValues),
     Secure(SecureTemplateValues),
 }
 
-#[derive(Serialize, Debug, Default)]
+#[derive(Serialize, Debug, Default, PartialEq)]
 pub struct UnsecureTemplateValues {
     pub path: String,
     pub token: String,
@@ -36,7 +36,7 @@ pub struct UnsecureTemplateValues {
     pub relay_url: Option<String>,
 }
 
-#[derive(Serialize, Debug, Default)]
+#[derive(Serialize, Debug, Default, PartialEq)]
 pub struct SecureTemplateValues {
     pub data: Option<Data>,
     pub path: Option<String>,

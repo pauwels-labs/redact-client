@@ -59,7 +59,7 @@ async fn main() {
     template_mapping.insert("secure", "./static/secure.handlebars");
     let render_engine = HandlebarsRenderer::new(template_mapping).unwrap();
 
-    // Create an in-memory session store
+    // Create a relay client which supports mutual TLS
     let relayer = MutualTLSRelayer::new("keys/client.pem".to_owned())
         .unwrap();
 
@@ -99,6 +99,10 @@ async fn main() {
 
     // Create a CORS filter for the insecure routes that allows any origin
     let unsecure_cors = warp::cors().allow_any_origin().allow_methods(vec!["GET"]);
+    let unsecure_cors_post = warp::cors()
+        .allow_any_origin()
+        .allow_methods(vec!["GET", "POST", "OPTIONS"])
+        .allow_headers(vec!["content-type"]);
 
     // Create a CORS filter for the secure route that allows only localhost origin
     let secure_cors = warp::cors()
@@ -132,10 +136,11 @@ async fn main() {
         .with(secure_cors)),
     );
 
-    let proxy_routes = warp::post().and(
-        routes::proxy::post(relayer)
-            .with(unsecure_cors)
-    );
+    let proxy_routes = warp::any().and(
+        warp::post().and(
+            routes::proxy::post(relayer)
+        ))
+        .with(unsecure_cors_post.clone());
 
     let routes = health_route
         .or(get_routes)

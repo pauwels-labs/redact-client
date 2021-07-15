@@ -1,8 +1,10 @@
 use warp::{Filter, Rejection, Reply, http::Response};
 use crate::relayer::Relayer;
-use crate::routes::error::RelayRejection;
+use crate::routes::error::{RelayRejection, ProxyRejection};
 use serde::{Deserialize, Serialize};
 use reqwest;
+use warp::http::HeaderValue;
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 struct ProxyBodyParams {
     host_url: String
@@ -29,18 +31,14 @@ pub fn post<Q: Relayer>(
             move |response: reqwest::Response| async move {
                 Ok::<_, Rejection>(Response::builder()
                     .status(response.status())
-                    .header(
-                        "Content-Type",
-                        response.headers()
-                            .get("Content-Type")
-                            .unwrap()
-                    )
+                    .header("Content-Type", response.headers()
+                        .get("Content-Type")
+                        .unwrap_or(&HeaderValue::from_static("")))
                     .body(
                         response.text()
                             .await
-                            .unwrap()
-                    )
-                    .unwrap())
+                            .map_err(ProxyRejection)?
+                    ))
             }
         )
 }

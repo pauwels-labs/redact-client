@@ -9,7 +9,6 @@ use crate::{
 };
 use redact_crypto::{Data, HasBuilder, States, Storer, SymmetricKey, SymmetricSealer, TypeBuilder};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::convert::TryFrom;
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore};
@@ -104,7 +103,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                             Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
                         } else {
                             let key_entry = storer
-                                .get::<SymmetricKey>(".keys.default.")
+                                .get::<SymmetricKey>(".keys.default")
                                 .await
                                 .map_err(StorageErrorRejection)?;
                             let key: SymmetricKey = storer

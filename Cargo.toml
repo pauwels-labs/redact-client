@@ -1,6 +1,6 @@
 [package]
 name = "redact-client"
-version = "0.1.0"
+version = "1.0.6"
 authors = ["Alexandre Pauwels <8890201+ajpauwels@users.noreply.github.com>"]
 edition = "2018"
 license-file = "LICENSE"

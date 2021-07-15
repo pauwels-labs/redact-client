@@ -4,7 +4,7 @@ pub mod error;
 pub use data::get::{with_token, without_token};
 pub use data::post::submit_data;
 pub use error::{
-    BadRequestRejection, DataNotFoundRejection, DataStorageErrorRejection,
-    IframeTokensDoNotMatchRejection, KeyStorageErrorRejection, SerializationRejection,
-    SessionTokenNotFoundRejection,
+    BadRequestRejection, CryptoErrorRejection, DataNotFoundRejection,
+    IframeTokensDoNotMatchRejection, SerializationRejection, SessionTokenNotFoundRejection,
+    StorageErrorRejection,
 };

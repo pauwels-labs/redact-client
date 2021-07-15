@@ -15,7 +15,7 @@ RUN USER=root cargo new service
 WORKDIR /usr/src/service
 COPY Cargo.lock Cargo.toml ./
 RUN echo "fn main() {println!(\"if you see this, the image build failed and kept the depency-caching entrypoint. check your dockerfile and image build logs.\")}" > src/main.rs
-RUN cargo tarpaulin
+RUN cargo tarpaulin --locked
 
 # Load source code to create final binary
 RUN rm -rf src
@@ -25,4 +25,4 @@ RUN rm -rf src
 COPY src bust* ./src/
 # Copy the fit folder so code cov knows which branch we're on
 COPY .git .git
-RUN cargo tarpaulin --coveralls $REPO_TOKEN
+RUN cargo tarpaulin --locked --skip-clean --coveralls $REPO_TOKEN

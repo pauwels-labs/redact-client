@@ -1,18 +1,20 @@
+mod error_handler;
 pub mod render;
 mod routes;
 pub mod token;
-mod error_handler;
 
+use crate::error_handler::handle_rejection;
 use redact_config::Configurator;
-use redact_crypto::{Key, RedactKeyStorer};
-use redact_data::RedactDataStorer;
+use redact_crypto::{
+    key::sodiumoxide::SodiumOxideSymmetricKey, ByteSource, HasBuilder, RedactStorer, States,
+    Storer, SymmetricKey, VectorByteSource,
+};
 use render::HandlebarsRenderer;
 use serde::Serialize;
 use std::collections::HashMap;
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
-use crate::error_handler::handle_rejection;
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -46,10 +48,6 @@ async fn main() {
     // Extract config with a REDACT env var prefix
     let config = redact_config::new("REDACT").unwrap();
 
-    // Call this here to make sure it's done
-    // We should see if there's a cleaner way to handle this init step
-    //SodiumOxideCryptoProvider::init().unwrap();
-
     // Determine port to listen on
     let port = get_port(&config);
 
@@ -61,11 +59,31 @@ async fn main() {
 
     // Get storage handle
     let storage_url = config.get_str("storage.url").unwrap();
-    let data_store = RedactDataStorer::new(&storage_url);
 
     // Get the bootstrap key from config
-    let bootstrap_identity: Key = config.get::<Key>("crypto.bootstrapidentity").unwrap();
-    let keys_store = RedactKeyStorer::new(&storage_url);
+    //let bootstrap_identity: Key = config.get::<Key>("crypto.bootstrapidentity").unwrap();
+    let storer = RedactStorer::new(&storage_url);
+    let default_sym_key_result = storer.get::<SymmetricKey>(".keys.default").await;
+    let default_sym_key = match default_sym_key_result {
+        Ok(e) => storer.resolve::<SymmetricKey>(e.value).await,
+        Err(e) => match e {
+            _ => {
+                let key = SodiumOxideSymmetricKey::new();
+                let bytes = ByteSource::Vector(VectorByteSource::new(key.key.as_ref()));
+                let builder = key.builder().into();
+
+                storer
+                    .create(
+                        ".keys.default".to_owned(),
+                        States::Unsealed { builder, bytes },
+                    )
+                    .await
+                    .unwrap();
+                Ok(SymmetricKey::SodiumOxide(key))
+            }
+        },
+    }
+    .unwrap();
 
     // Create an in-memory session store
     let session_store = MemoryStore::new();
@@ -73,28 +91,38 @@ async fn main() {
     // Create a token generator
     let token_generator = FromThreadRng::new();
 
+    // Create a CORS filter for the insecure routes that allows any origin
+    let unsecure_cors = warp::cors().allow_any_origin().allow_methods(vec!["GET"]);
+
+    // Create a CORS filter for the secure route that allows only localhost origin
+    let secure_cors = warp::cors()
+        .allow_origin("http://localhost:8080")
+        .allow_methods(vec!["GET", "POST"]);
+
     // Build out routes
     let health_route = warp::path!("healthz").map(|| warp::reply::json(&Healthz {}));
-    let post_routes = warp::post().and(routes::data::post::submit_data(
-        session_store.clone(),
-        render_engine.clone(),
-        token_generator.clone(),
-        data_store.clone(),
-        keys_store.clone(),
-    ));
+    let post_routes = warp::post()
+        .and(routes::data::post::submit_data(
+            session_store.clone(),
+            render_engine.clone(),
+            token_generator.clone(),
+            storer.clone(),
+        ))
+        .with(secure_cors.clone());
     let get_routes = warp::get().and(
         routes::data::get::with_token(
             session_store.clone(),
             render_engine.clone(),
             token_generator.clone(),
-            data_store.clone(),
-            keys_store.clone(),
+            storer.clone(),
         )
+        .with(unsecure_cors)
         .or(routes::data::get::without_token(
             session_store.clone(),
             render_engine.clone(),
             token_generator.clone(),
-        )),
+        )
+        .with(secure_cors)),
     );
 
     let routes = health_route

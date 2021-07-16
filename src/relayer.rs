@@ -89,3 +89,27 @@ impl Relayer for MutualTLSRelayer {
             .map_err(|source| RelayError::RelayRequestError { source })
     }
 }
+
+#[cfg(test)]
+pub mod tests {
+    use super::{RelayError, Relayer};
+    use mockall::predicate::*;
+    use mockall::*;
+    use http::StatusCode;
+    use reqwest::Response;
+    use async_trait::async_trait;
+
+    mock! {
+    pub Relayer {}
+    impl Clone for Relayer {
+            fn clone(&self) -> Self;
+    }
+
+    #[async_trait]
+    impl Relayer for MockRelayer {
+        async fn relay(&self, path: String, relay_url: String) -> Result<StatusCode, RelayError>;
+        async fn get(&self, relay_url: String) -> Result<Response, RelayError>;
+    }
+    }
+
+}

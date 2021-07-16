@@ -25,6 +25,7 @@
 
 
 	<script>
+
       document.getElementById("form").addEventListener('submit', functSubmit);
       function functSubmit(event) {
 		const formTarget = event.target;
@@ -46,7 +47,9 @@
   		  body: formBody
 		})
 		.then((res) => {
-		  window.parent.postMessage("data created", "*");
+		  {{ #if Secure.js_message }}
+		  	window.parent.postMessage("{{ Secure.js_message }}", "*");
+		  {{/if}}
 		  return res.text();
 		});
 

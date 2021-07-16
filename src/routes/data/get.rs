@@ -21,6 +21,7 @@ struct WithoutTokenQueryParams {
     edit: Option<bool>,
     data_type: Option<String>,
     relay_url: Option<String>,
+    js_message: Option<String>
 }
 
 #[derive(Deserialize, Serialize)]
@@ -34,6 +35,7 @@ struct WithTokenQueryParams {
     edit: Option<bool>,
     data_type: Option<String>,
     relay_url: Option<String>,
+    js_message: Option<String>
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -78,6 +80,7 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                     edit: query_params.edit,
                     data_type: query_params.data_type,
                     relay_url: query_params.relay_url,
+                    js_message: query_params.js_message,
                 };
                 Ok::<_, Rejection>((
                     Rendered::new(
@@ -197,6 +200,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                             css: query_params.css,
                             edit: query_params.edit,
                             relay_url: query_params.relay_url,
+                            js_message: query_params.js_message,
                         }),
                     },
                 )?;
@@ -357,6 +361,7 @@ mod tests {
                         css: None,
                         edit: None,
                         relay_url: None,
+                        js_message: None,
                     });
                     template.value == expected_value
                 })
@@ -498,6 +503,7 @@ mod tests {
                         edit: None,
                         data_type: None,
                         relay_url: None,
+                        js_message: None
                     });
 
                     template.value == expected_value
@@ -544,6 +550,7 @@ mod tests {
                         edit: None,
                         data_type: None,
                         relay_url: None,
+                        js_message: None
                     });
 
                     template.value == expected_value
@@ -590,6 +597,7 @@ mod tests {
                         edit: Some(true),
                         data_type: None,
                         relay_url: None,
+                        js_message: None
                     });
                     template.value == expected_value
                 })
@@ -635,6 +643,7 @@ mod tests {
                         edit: Some(false),
                         data_type: None,
                         relay_url: None,
+                        js_message: None
                     });
                     template.value == expected_value
                 })

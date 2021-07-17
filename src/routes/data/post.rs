@@ -263,15 +263,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_submit_data() {
-        #[cfg(test)]
-        // let mock_url = &mockito::server_url();
         let token = "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D";
         let data_path = ".testKey.";
-
-        // let m = mock("POST", "/redact/relay")
-        //     .with_status(200)
-        //     .match_body(Matcher::Json(serde_json::json!({ "path": data_path })))
-        //     .create();
 
         let mut session = Session::new();
         session.set_cookie_value("testSID".to_owned());
@@ -350,7 +343,6 @@ mod tests {
             .await;
 
         assert_eq!(res.status(), 200);
-        // m.assert();
     }
 
     #[tokio::test]

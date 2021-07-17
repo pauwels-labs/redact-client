@@ -12,7 +12,7 @@ use reqwest::Response;
 #[derive(Error, Debug)]
 pub enum RelayError {
     #[error("Failure happened during relay")]
-    RelayRequestError { source: reqwest::Error }
+    RelayRequestError { source: Option<reqwest::Error> }
 }
 
 impl Reject for RelayError {}
@@ -77,7 +77,7 @@ impl Relayer for MutualTLSRelayer {
             .await
             .and_then(|response| response.error_for_status())
             .and_then(|response| Ok(response.status()))
-            .map_err(|source| RelayError::RelayRequestError { source })
+            .map_err(|source| RelayError::RelayRequestError { source: Some(source) })
     }
 
     async fn get(&self, relay_url: String) -> Result<Response, RelayError> {
@@ -86,6 +86,30 @@ impl Relayer for MutualTLSRelayer {
             .send()
             .await
             .and_then(|response| response.error_for_status())
-            .map_err(|source| RelayError::RelayRequestError { source })
+            .map_err(|source| RelayError::RelayRequestError { source: Some(source) })
     }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::{RelayError, Relayer};
+    use mockall::predicate::*;
+    use mockall::*;
+    use http::StatusCode;
+    use reqwest::Response;
+    use async_trait::async_trait;
+
+    mock! {
+    pub Relayer {}
+    impl Clone for Relayer {
+            fn clone(&self) -> Self;
+    }
+
+    #[async_trait]
+    impl Relayer for MockRelayer {
+        async fn relay(&self, path: String, relay_url: String) -> Result<StatusCode, RelayError>;
+        async fn get(&self, relay_url: String) -> Result<Response, RelayError>;
+    }
+    }
+
 }

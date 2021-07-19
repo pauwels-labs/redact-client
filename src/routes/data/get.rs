@@ -14,6 +14,8 @@ use warp::{Filter, Rejection, Reply};
 use warp_sessions::{
     self, CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
 };
+use regex::Regex;
+use percent_encoding::percent_decode_str;
 
 #[derive(Deserialize, Serialize)]
 struct WithoutTokenQueryParams {
@@ -73,6 +75,19 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R| async move {
+
+                let mut sanitized_message = None;
+                if let Some(js_message) = query_params.js_message {
+                    let decoded_param = percent_decode_str(&js_message.clone())
+                        .decode_utf8()
+                        .unwrap()
+                        .to_string();
+                    let base64_regex = Regex::new(r"^[A-Za-z0-9+/]+={0,2}$").unwrap();
+                    if base64_regex.is_match(&decoded_param) {
+                        sanitized_message = Some(js_message)
+                    }
+                }
+
                 let utv = UnsecureTemplateValues {
                     path: path_params.path.clone(),
                     token: token.clone(),
@@ -80,7 +95,7 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                     edit: query_params.edit,
                     data_type: query_params.data_type,
                     relay_url: query_params.relay_url,
-                    js_message: query_params.js_message,
+                    js_message: sanitized_message,
                 };
                 Ok::<_, Rejection>((
                     Rendered::new(

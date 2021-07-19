@@ -25,7 +25,8 @@
 
 
 	<script>
-
+	{{ #if Secure.js_message }}
+	  {{ #if Secure.edit }}
       document.getElementById("form").addEventListener('submit', functSubmit);
       function functSubmit(event) {
 		const formTarget = event.target;
@@ -47,15 +48,16 @@
   		  body: formBody
 		})
 		.then((res) => {
-		  {{ #if Secure.js_message }}
 		  	window.parent.postMessage("{{ Secure.js_message }}", "*");
-		  {{/if}}
 		  return res.text();
 		});
 
 		// Prevent the default form submit
 		event.preventDefault();
 	  }
+	  {{/if}}
+	{{/if}}
+
     </script>
   </body>
 </html>

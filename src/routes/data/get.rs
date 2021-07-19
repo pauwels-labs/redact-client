@@ -688,5 +688,102 @@ mod tests {
                 .await;
             assert_eq!(res.status(), 200);
         }
+
+
+        #[tokio::test]
+        async fn test_without_token_with_js_message_valid() {
+            let js_message = "dXBkYXRl";
+
+            let session_store = MemoryStore::new();
+            let mut render_engine = MockRenderer::new();
+            render_engine
+                .expect_render()
+                .withf(move |template: &RenderTemplate| {
+                    let expected_value = TemplateValues::Unsecure(UnsecureTemplateValues {
+                        path: ".testKey.".to_owned(),
+                        token: "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
+                            .to_owned(),
+                        css: None,
+                        edit: Some(false),
+                        data_type: None,
+                        relay_url: None,
+                        js_message: Some(js_message.to_owned())
+                    });
+                    template.value == expected_value
+                })
+                .times(1)
+                .return_once(move |_| Ok("".to_string()));
+
+            let mut token_generator = MockTokenGenerator::new();
+            token_generator
+                .expect_generate_token()
+                .times(1)
+                .returning(|| {
+                    Ok(
+                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
+                            .to_owned(),
+                    )
+                });
+
+            let without_token_filter = get::without_token(
+                session_store,
+                Arc::new(render_engine),
+                Arc::new(token_generator),
+            );
+
+            let res = warp::test::request()
+                .path(&format!("/data/.testKey.?edit=false&js_message={}", js_message))
+                .reply(&without_token_filter)
+                .await;
+            assert_eq!(res.status(), 200);
+        }
+
+        #[tokio::test]
+        async fn test_without_token_with_js_message_invalid() {
+            let js_message = "invalid%5C%22%29%3B+mesaage%7D%7B";
+
+            let session_store = MemoryStore::new();
+            let mut render_engine = MockRenderer::new();
+            render_engine
+                .expect_render()
+                .withf(move |template: &RenderTemplate| {
+                    let expected_value = TemplateValues::Unsecure(UnsecureTemplateValues {
+                        path: ".testKey.".to_owned(),
+                        token: "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
+                            .to_owned(),
+                        css: None,
+                        edit: Some(false),
+                        data_type: None,
+                        relay_url: None,
+                        js_message: None
+                    });
+                    template.value == expected_value
+                })
+                .times(1)
+                .return_once(move |_| Ok("".to_string()));
+
+            let mut token_generator = MockTokenGenerator::new();
+            token_generator
+                .expect_generate_token()
+                .times(1)
+                .returning(|| {
+                    Ok(
+                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
+                            .to_owned(),
+                    )
+                });
+
+            let without_token_filter = get::without_token(
+                session_store,
+                Arc::new(render_engine),
+                Arc::new(token_generator),
+            );
+
+            let res = warp::test::request()
+                .path(&format!("/data/.testKey.?edit=false&js_message={}", js_message))
+                .reply(&without_token_filter)
+                .await;
+            assert_eq!(res.status(), 200);
+        }
     }
 }

@@ -2,6 +2,7 @@ mod error_handler;
 pub mod render;
 mod routes;
 pub mod token;
+mod relayer;
 
 use crate::error_handler::handle_rejection;
 use redact_config::Configurator;
@@ -15,6 +16,7 @@ use std::collections::HashMap;
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
+use crate::relayer::MutualTLSRelayer;
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -57,6 +59,10 @@ async fn main() {
     template_mapping.insert("secure", "./static/secure.handlebars");
     let render_engine = HandlebarsRenderer::new(template_mapping).unwrap();
 
+    // Create a relay client which supports mutual TLS
+    let relayer = MutualTLSRelayer::new(config.get_str("certificate.filepath").unwrap())
+        .unwrap();
+
     // Get storage handle
     let storage_url = config.get_str("storage.url").unwrap();
 
@@ -93,6 +99,10 @@ async fn main() {
 
     // Create a CORS filter for the insecure routes that allows any origin
     let unsecure_cors = warp::cors().allow_any_origin().allow_methods(vec!["GET"]);
+    let unsecure_cors_post = warp::cors()
+        .allow_any_origin()
+        .allow_methods(vec!["GET", "POST", "OPTIONS"])
+        .allow_headers(vec!["content-type"]);
 
     // Create a CORS filter for the secure route that allows only localhost origin
     let secure_cors = warp::cors()
@@ -107,6 +117,7 @@ async fn main() {
             render_engine.clone(),
             token_generator.clone(),
             storer.clone(),
+            relayer.clone()
         ))
         .with(secure_cors.clone());
     let get_routes = warp::get().and(
@@ -116,7 +127,7 @@ async fn main() {
             token_generator.clone(),
             storer.clone(),
         )
-        .with(unsecure_cors)
+        .with(unsecure_cors.clone())
         .or(routes::data::get::without_token(
             session_store.clone(),
             render_engine.clone(),
@@ -125,9 +136,16 @@ async fn main() {
         .with(secure_cors)),
     );
 
+    let proxy_routes = warp::any().and(
+        warp::post().and(
+            routes::proxy::post(relayer)
+        ))
+        .with(unsecure_cors_post.clone());
+
     let routes = health_route
         .or(get_routes)
         .or(post_routes)
+        .or(proxy_routes)
         .with(warp::log("routes"))
         .recover(handle_rejection);
 

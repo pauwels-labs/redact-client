@@ -76,17 +76,18 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                   token: String,
                   render_engine: R| async move {
 
-                let mut sanitized_message = None;
-                if let Some(js_message) = query_params.js_message {
-                    let decoded_param = percent_decode_str(&js_message.clone())
+
+                let sanitized_message = query_params.js_message.and_then(|message| {
+                    let decoded_param = percent_decode_str(&message.clone())
                         .decode_utf8()
-                        .unwrap()
+                        .unwrap_or_default()
                         .to_string();
                     let base64_regex = Regex::new(r"^[A-Za-z0-9+/]+={0,2}$").unwrap();
-                    if base64_regex.is_match(&decoded_param) {
-                        sanitized_message = Some(js_message)
+                    match base64_regex.is_match(&decoded_param) {
+                        true => Some(message),
+                        false => None
                     }
-                }
+                });
 
                 let utv = UnsecureTemplateValues {
                     path: path_params.path.clone(),

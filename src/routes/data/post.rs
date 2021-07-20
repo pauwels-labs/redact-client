@@ -25,6 +25,7 @@ struct SubmitDataBodyParams {
     value: Option<String>,
     value_type: String,
     relay_url: Option<String>,
+    js_message: Option<String>
 }
 
 impl TryFrom<SubmitDataBodyParams> for Data {
@@ -144,7 +145,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                             css: query_params.css,
                                             edit: query_params.edit,
                                             relay_url: body_params.relay_url,
-                                            js_message: None,
+                                            js_message: body_params.js_message,
                                         }),
                                     },
                                 )?,

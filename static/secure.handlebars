@@ -10,6 +10,9 @@
       {{ #if Secure.relay_url }}
       <input type="hidden" value="{{ Secure.relay_url }}" id="relay_url" name="relay_url">
       {{ /if }}
+	  {{ #if Secure.js_message }}
+	  <input type="hidden" value="{{ Secure.js_message }}" id="js_message" name="js_message">
+	  {{ /if }}
       <input type="hidden" value="{{ Secure.path }}" id="path" name="path">
       {{ data_input Secure.data }}
       {{! {{ #each Secure.key_names }\} }}

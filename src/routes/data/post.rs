@@ -436,8 +436,8 @@ mod tests {
             .path("/data/E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D")
             .header("cookie", "sid=testSID")
             .body(format!(
-                "relay_url={}&path={}&value_type=string&value=qew&submit=Submit",
-                relay_url, data_path
+                "relay_url={}&path={}&js_message={}&value_type=string&value=qew&submit=Submit",
+                relay_url, data_path, js_message
             ))
             .reply(&submit_data)
             .await;

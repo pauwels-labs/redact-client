@@ -221,6 +221,8 @@ mod tests {
     };
     use warp_sessions::{ArcSessionStore, Session, SessionStore};
     use http::StatusCode;
+    use crate::render::RenderTemplate;
+    use crate::render::TemplateValues::{Secure, Unsecure};
 
     mock! {
                 pub SessionStore {}
@@ -348,7 +350,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_submit_data_with_relay() {
+    async fn test_submit_data_with_relay_and_js_message() {
+        let js_message = "ABC";
         let token = "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D";
         let data_path = ".testKey.";
 
@@ -378,6 +381,12 @@ mod tests {
         render_engine
             .expect_render()
             .times(1)
+            .withf(move |template: &RenderTemplate| {
+                match &template.value {
+                    Secure(secure) => secure.js_message == Some(js_message.to_owned()),
+                    Unsecure(_) => false
+                }
+            })
             .return_once(move |_| Ok("".to_string()));
 
         let mut storer = MockStorer::new();

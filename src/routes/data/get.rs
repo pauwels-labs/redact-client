@@ -23,7 +23,8 @@ struct WithoutTokenQueryParams {
     edit: Option<bool>,
     data_type: Option<String>,
     relay_url: Option<String>,
-    js_message: Option<String>
+    js_message: Option<String>,
+    js_height_msg_prefix: Option<String>
 }
 
 #[derive(Deserialize, Serialize)]
@@ -37,7 +38,8 @@ struct WithTokenQueryParams {
     edit: Option<bool>,
     data_type: Option<String>,
     relay_url: Option<String>,
-    js_message: Option<String>
+    js_message: Option<String>,
+    js_height_msg_prefix: Option<String>
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -97,6 +99,7 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                     data_type: query_params.data_type,
                     relay_url: query_params.relay_url,
                     js_message: sanitized_message,
+                    js_height_msg_prefix: query_params.js_height_msg_prefix
                 };
                 Ok::<_, Rejection>((
                     Rendered::new(
@@ -217,6 +220,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                             edit: query_params.edit,
                             relay_url: query_params.relay_url,
                             js_message: query_params.js_message,
+                            js_height_msg_prefix: query_params.js_height_msg_prefix
                         }),
                     },
                 )?;

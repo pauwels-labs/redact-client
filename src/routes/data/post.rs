@@ -146,6 +146,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                             edit: query_params.edit,
                                             relay_url: body_params.relay_url,
                                             js_message: body_params.js_message,
+                                            js_height_msg_prefix: None
                                         }),
                                     },
                                 )?,

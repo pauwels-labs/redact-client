@@ -21,13 +21,20 @@
       <input type="submit" value="Submit" name="submit" id="submit">
     </form>
     {{ else }}
-      <p>
+      <p id="data">
         {{ data_display Secure.data }}
       </p>
     {{ /if }}
 
 
 	<script>
+	{{ #if Secure.js_height_msg_prefix }}
+		var clientHeight = document.getElementById('data').clientHeight;
+		var message = atob("{{ Secure.js_height_msg_prefix }}") + clientHeight;
+		window.parent.postMessage(btoa(message), "*");
+	{{/if}}
+
+
 	{{ #if Secure.js_message }}
 	  {{ #if Secure.edit }}
       document.getElementById("form").addEventListener('submit', functSubmit);

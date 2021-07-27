@@ -34,6 +34,7 @@ pub struct UnsecureTemplateValues {
     pub edit: Option<bool>,
     pub data_type: Option<String>,
     pub relay_url: Option<String>,
+    pub js_message: Option<String>,
 }
 
 #[derive(Serialize, Debug, Default, PartialEq)]
@@ -44,6 +45,7 @@ pub struct SecureTemplateValues {
     pub css: Option<String>,
     pub edit: Option<bool>,
     pub relay_url: Option<String>,
+    pub js_message: Option<String>,
 }
 
 impl From<HandlebarsTemplateError> for RenderError {

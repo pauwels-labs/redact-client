@@ -7,7 +7,7 @@
   <body>
     <iframe id="data-iframe" src="" title="secure"></iframe>
     <script>
-      document.getElementById("data-iframe").contentWindow.location.href = "/data/{{ Unsecure.path }}/{{ Unsecure.token }}?{{ #if Unsecure.css }}css={{ Unsecure.css }}{{ /if }}{{ #if Unsecure.edit }}&edit={{ Unsecure.edit }}{{ /if }}{{ #if Unsecure.data_type }}&data_type={{ Unsecure.data_type }}{{ /if }}{{ #if Unsecure.relay_url }}&relay_url={{ Unsecure.relay_url }}{{ /if }}";
+      document.getElementById("data-iframe").contentWindow.location.href = "/data/{{ Unsecure.path }}/{{ Unsecure.token }}?{{ #if Unsecure.css }}css={{ Unsecure.css }}{{ /if }}{{ #if Unsecure.edit }}&edit={{ Unsecure.edit }}{{ /if }}{{ #if Unsecure.data_type }}&data_type={{ Unsecure.data_type }}{{ /if }}{{ #if Unsecure.relay_url }}&relay_url={{ Unsecure.relay_url }}{{ /if }}{{ #if Unsecure.js_message }}&js_message={{ Unsecure.js_message }}{{ /if }}";
       window.addEventListener('message', functSubmit, false);
         function functSubmit(event) {
   		  window.parent.postMessage(event.data, "*");

@@ -25,6 +25,7 @@ struct SubmitDataBodyParams {
     value: Option<String>,
     value_type: String,
     relay_url: Option<String>,
+    js_message: Option<String>
 }
 
 impl TryFrom<SubmitDataBodyParams> for Data {
@@ -144,6 +145,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                             css: query_params.css,
                                             edit: query_params.edit,
                                             relay_url: body_params.relay_url,
+                                            js_message: body_params.js_message,
                                         }),
                                     },
                                 )?,
@@ -219,6 +221,8 @@ mod tests {
     };
     use warp_sessions::{ArcSessionStore, Session, SessionStore};
     use http::StatusCode;
+    use crate::render::RenderTemplate;
+    use crate::render::TemplateValues::{Secure, Unsecure};
 
     mock! {
                 pub SessionStore {}
@@ -346,7 +350,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_submit_data_with_relay() {
+    async fn test_submit_data_with_relay_and_js_message() {
+        let js_message = "ABC";
         let token = "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D";
         let data_path = ".testKey.";
 
@@ -376,6 +381,12 @@ mod tests {
         render_engine
             .expect_render()
             .times(1)
+            .withf(move |template: &RenderTemplate| {
+                match &template.value {
+                    Secure(secure) => secure.js_message == Some(js_message.to_owned()),
+                    Unsecure(_) => false
+                }
+            })
             .return_once(move |_| Ok("".to_string()));
 
         let mut storer = MockStorer::new();
@@ -425,8 +436,8 @@ mod tests {
             .path("/data/E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D")
             .header("cookie", "sid=testSID")
             .body(format!(
-                "relay_url={}&path={}&value_type=string&value=qew&submit=Submit",
-                relay_url, data_path
+                "relay_url={}&path={}&js_message={}&value_type=string&value=qew&submit=Submit",
+                relay_url, data_path, js_message
             ))
             .reply(&submit_data)
             .await;

@@ -16,6 +16,13 @@ use warp_sessions::{
 };
 use regex::Regex;
 use percent_encoding::percent_decode_str;
+use crate::routes::error::QueryParamValidationRejection;
+use serde::de::DeserializeOwned;
+
+
+pub trait Validate {
+    fn validate(&self) -> Result<(), Rejection> ;
+}
 
 #[derive(Deserialize, Serialize)]
 struct WithoutTokenQueryParams {
@@ -25,6 +32,13 @@ struct WithoutTokenQueryParams {
     relay_url: Option<String>,
     js_message: Option<String>,
     js_height_msg_prefix: Option<String>
+}
+
+impl Validate for WithoutTokenQueryParams {
+    fn validate(&self) -> Result<(), Rejection> {
+        validate_base64_query_param(self.js_message.clone())?;
+        Ok::<_, Rejection>(())
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -42,10 +56,26 @@ struct WithTokenQueryParams {
     js_height_msg_prefix: Option<String>
 }
 
+impl Validate for WithTokenQueryParams {
+    fn validate(&self) -> Result<(), Rejection> {
+        validate_base64_query_param(self.js_message.clone())?;
+        Ok::<_, Rejection>(())
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug)]
 struct WithTokenPathParams {
     path: String,
     token: String,
+}
+
+pub fn validated_query_params<T: 'static + DeserializeOwned + Send + Validate>(
+) -> impl Filter<Extract = (T,), Error = Rejection> + Copy {
+    warp::query::<T>()
+        .and_then(move |param: T| async move {
+            param.validate()?;
+            Ok::<_, Rejection>(param)
+    })
 }
 
 pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
@@ -55,7 +85,7 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::any()
         .and(warp::path!("data" / String).map(|path| WithoutTokenPathParams { path }))
-        .and(warp::query::<WithoutTokenQueryParams>())
+        .and(validated_query_params::<WithoutTokenQueryParams>())
         .and(warp_sessions::request::with_session(
             session_store,
             Some(CookieOptions {
@@ -78,19 +108,6 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                   token: String,
                   render_engine: R| async move {
 
-
-                let sanitized_message = query_params.js_message.and_then(|message| {
-                    let decoded_param = percent_decode_str(&message.clone())
-                        .decode_utf8()
-                        .unwrap_or_default()
-                        .to_string();
-                    let base64_regex = Regex::new(r"^[A-Za-z0-9+/]+={0,2}$").unwrap();
-                    match base64_regex.is_match(&decoded_param) {
-                        true => Some(message),
-                        false => None
-                    }
-                });
-
                 let utv = UnsecureTemplateValues {
                     path: path_params.path.clone(),
                     token: token.clone(),
@@ -98,8 +115,8 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                     edit: query_params.edit,
                     data_type: query_params.data_type,
                     relay_url: query_params.relay_url,
-                    js_message: sanitized_message,
-                    js_height_msg_prefix: query_params.js_height_msg_prefix
+                    js_height_msg_prefix: query_params.js_height_msg_prefix,
+                    js_message: query_params.js_message,
                 };
                 Ok::<_, Rejection>((
                     Rendered::new(
@@ -277,6 +294,25 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
         )
         .untuple_one()
         .and_then(warp_sessions::reply::with_session)
+}
+
+fn validate_base64_query_param(str: Option<String>)-> Result<(), Rejection> {
+    match str {
+        Some(msg) => {
+            percent_decode_str(&msg)
+                .decode_utf8()
+                .map_err(|_| warp::reject::custom(QueryParamValidationRejection))
+                .and_then(|str| {
+                    let base64_regex = Regex::new(r"^[A-Za-z0-9+/]+={0,2}$").unwrap();
+                    match base64_regex.is_match(&str.to_string()) {
+                        true => Ok::<_, Rejection>(()),
+                        false => Err(warp::reject::custom(QueryParamValidationRejection))
+                    }
+                })
+
+        },
+        None => Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -507,6 +543,7 @@ mod tests {
         use crate::token::tests::MockTokenGenerator;
         use std::sync::Arc;
         use warp_sessions::MemoryStore;
+        use mockall::PredicateStrExt;
 
         #[tokio::test]
         async fn without_token_with_no_query_params() {
@@ -751,32 +788,12 @@ mod tests {
             let mut render_engine = MockRenderer::new();
             render_engine
                 .expect_render()
-                .withf(move |template: &RenderTemplate| {
-                    let expected_value = TemplateValues::Unsecure(UnsecureTemplateValues {
-                        path: ".testKey.".to_owned(),
-                        token: "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
-                            .to_owned(),
-                        css: None,
-                        edit: Some(false),
-                        data_type: None,
-                        relay_url: None,
-                        js_message: None
-                    });
-                    template.value == expected_value
-                })
-                .times(1)
-                .return_once(move |_| Ok("".to_string()));
+                .times(0);
 
             let mut token_generator = MockTokenGenerator::new();
             token_generator
                 .expect_generate_token()
-                .times(1)
-                .returning(|| {
-                    Ok(
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
-                            .to_owned(),
-                    )
-                });
+                .times(0);
 
             let without_token_filter = get::without_token(
                 session_store,
@@ -788,7 +805,7 @@ mod tests {
                 .path(&format!("/data/.testKey.?edit=false&js_message={}", js_message))
                 .reply(&without_token_filter)
                 .await;
-            assert_eq!(res.status(), 200);
+            assert_eq!(res.status(), 500);
         }
     }
 }

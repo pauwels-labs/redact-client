@@ -37,6 +37,7 @@ struct WithoutTokenQueryParams {
 impl Validate for WithoutTokenQueryParams {
     fn validate(&self) -> Result<(), Rejection> {
         validate_base64_query_param(self.js_message.clone())?;
+        validate_base64_query_param(self.js_height_msg_prefix.clone())?;
         Ok::<_, Rejection>(())
     }
 }
@@ -59,6 +60,7 @@ struct WithTokenQueryParams {
 impl Validate for WithTokenQueryParams {
     fn validate(&self) -> Result<(), Rejection> {
         validate_base64_query_param(self.js_message.clone())?;
+        validate_base64_query_param(self.js_height_msg_prefix.clone())?;
         Ok::<_, Rejection>(())
     }
 }

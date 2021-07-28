@@ -10,6 +10,9 @@
       {{ #if Secure.relay_url }}
       <input type="hidden" value="{{ Secure.relay_url }}" id="relay_url" name="relay_url">
       {{ /if }}
+	  {{ #if Secure.js_message }}
+	  <input type="hidden" value="{{ Secure.js_message }}" id="js_message" name="js_message">
+	  {{ /if }}
       <input type="hidden" value="{{ Secure.path }}" id="path" name="path">
       {{ data_input Secure.data }}
       {{! {{ #each Secure.key_names }\} }}
@@ -25,6 +28,8 @@
 
 
 	<script>
+	{{ #if Secure.js_message }}
+	  {{ #if Secure.edit }}
       document.getElementById("form").addEventListener('submit', functSubmit);
       function functSubmit(event) {
 		const formTarget = event.target;
@@ -46,13 +51,16 @@
   		  body: formBody
 		})
 		.then((res) => {
-		  window.parent.postMessage("data created", "*");
+		  	window.parent.postMessage("{{ Secure.js_message }}", "*");
 		  return res.text();
 		});
 
 		// Prevent the default form submit
 		event.preventDefault();
 	  }
+	  {{/if}}
+	{{/if}}
+
     </script>
   </body>
 </html>

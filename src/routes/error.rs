@@ -29,3 +29,11 @@ impl Reject for CryptoErrorRejection {}
 #[derive(Debug)]
 pub struct RelayRejection;
 impl Reject for RelayRejection {}
+
+#[derive(Debug)]
+pub struct ProxyRejection(pub reqwest::Error);
+impl Reject for ProxyRejection {}
+
+#[derive(Debug)]
+pub struct QueryParamValidationRejection;
+impl Reject for QueryParamValidationRejection {}

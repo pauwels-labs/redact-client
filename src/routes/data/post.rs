@@ -9,10 +9,10 @@ use crate::{
 };
 use redact_crypto::{Data, HasBuilder, States, Storer, SymmetricKey, SymmetricSealer, TypeBuilder};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::convert::TryFrom;
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore};
+use crate::relayer::Relayer;
 
 #[derive(Deserialize, Serialize)]
 struct SubmitDataPathParams {
@@ -25,6 +25,7 @@ struct SubmitDataBodyParams {
     value: Option<String>,
     value_type: String,
     relay_url: Option<String>,
+    js_message: Option<String>
 }
 
 impl TryFrom<SubmitDataBodyParams> for Data {
@@ -54,11 +55,12 @@ struct SubmitDataQueryParams {
     fetch_id: Option<String>,
 }
 
-pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
+pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q: Relayer>(
     session_store: S,
     render_engine: R,
     token_generator: T,
     storer: H,
+    relayer: Q
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::any()
         .and(warp::path!("data" / String).map(|token| SubmitDataPathParams { token }))
@@ -86,6 +88,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
         .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
         .and(warp::any().map(move || render_engine.clone()))
         .and(warp::any().map(move || storer.clone()))
+        .and(warp::any().map(move || relayer.clone()))
         .and_then(
             move |path_params: SubmitDataPathParams,
                   query_params: SubmitDataQueryParams,
@@ -93,14 +96,15 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R,
-                  storer: H| async move {
+                  storer: H,
+                  relayer: Q| async move {
                 match session_with_store.session.get("token") {
                     Some::<String>(session_token) => {
                         if session_token != path_params.token {
                             Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
                         } else {
                             let key_entry = storer
-                                .get::<SymmetricKey>(".keys.default.")
+                                .get::<SymmetricKey>(".keys.default")
                                 .await
                                 .map_err(CryptoErrorRejection)?;
                             let key: SymmetricKey = storer
@@ -123,22 +127,11 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                                 .await
                                 .map_err(CryptoErrorRejection)?;
 
-                            match body_params.relay_url {
-                                Some(ref url) => {
-                                    let mut req_body = HashMap::new();
-                                    req_body.insert("path", body_params.path.clone());
-                                    let client = reqwest::Client::new();
-                                    client
-                                        .post(url)
-                                        .json(&req_body)
-                                        .send()
-                                        .await
-                                        .and_then(|response| response.error_for_status())
-                                        .map_err(|_| warp::reject::custom(RelayRejection))?;
-                                    Ok::<(), RelayRejection>(())
-                                }
-                                None => Ok(()),
-                            }?;
+                            if let Some(relay_url) = body_params.relay_url.clone() {
+                                relayer.relay(body_params.path.clone(), relay_url)
+                                .await
+                                .map_err(|_| warp::reject::custom(RelayRejection))?;
+                            }
 
                             Ok::<_, Rejection>((
                                 Rendered::new(
@@ -152,6 +145,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                                             css: query_params.css,
                                             edit: query_params.edit,
                                             relay_url: body_params.relay_url,
+                                            js_message: body_params.js_message,
                                         }),
                                     },
                                 )?,
@@ -209,6 +203,7 @@ mod tests {
     use crate::render::tests::MockRenderer;
     use crate::routes::data::post;
     use crate::token::tests::MockTokenGenerator;
+    use crate::relayer::tests::MockRelayer;
     use async_trait::async_trait;
     use mockall::predicate::*;
     use mockall::*;
@@ -225,9 +220,9 @@ mod tests {
         sync::Arc,
     };
     use warp_sessions::{ArcSessionStore, Session, SessionStore};
-
-    #[cfg(test)]
-    use mockito::{mock, Matcher};
+    use http::StatusCode;
+    use crate::render::RenderTemplate;
+    use crate::render::TemplateValues::{Secure, Unsecure};
 
     mock! {
                 pub SessionStore {}
@@ -272,15 +267,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_submit_data() {
-        #[cfg(test)]
-        let mock_url = &mockito::server_url();
         let token = "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D";
         let data_path = ".testKey.";
-
-        let m = mock("POST", "/redact/relay")
-            .with_status(200)
-            .match_body(Matcher::Json(serde_json::json!({ "path": data_path })))
-            .create();
 
         let mut session = Session::new();
         session.set_cookie_value("testSID".to_owned());
@@ -315,7 +303,7 @@ mod tests {
             .expect_get_indexed::<SymmetricKey>()
             .times(1)
             .withf(|path, index| {
-                path == ".keys.default." && *index == Some(SymmetricKey::get_index().unwrap())
+                path == ".keys.default" && *index == Some(SymmetricKey::get_index().unwrap())
             })
             .returning(|_, _| {
                 let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
@@ -337,11 +325,14 @@ mod tests {
             Ok("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D".to_owned())
         });
 
+        let relayer = MockRelayer::new();
+
         let submit_data = post::submit_data(
             session_store,
             Arc::new(render_engine),
             Arc::new(token_generator),
             Arc::new(storer),
+            Arc::new(relayer),
         );
 
         let res = warp::test::request()
@@ -349,13 +340,108 @@ mod tests {
             .path("/data/E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D")
             .header("cookie", "sid=testSID")
             .body(format!(
-                "relay_url={}%2Fredact%2Frelay&path={}&value_type=string&value=qew&submit=Submit",
-                mock_url, data_path
+                "path={}&value_type=string&value=qew&submit=Submit",
+                 data_path
             ))
             .reply(&submit_data)
             .await;
 
         assert_eq!(res.status(), 200);
-        m.assert();
+    }
+
+    #[tokio::test]
+    async fn test_submit_data_with_relay_and_js_message() {
+        let js_message = "ABC";
+        let token = "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D";
+        let data_path = ".testKey.";
+
+        let mut session = Session::new();
+        session.set_cookie_value("testSID".to_owned());
+        session.insert("token", token).unwrap();
+        let expected_sid = session.id().to_owned();
+
+        let mut mock_store = MockSessionStore::new();
+        mock_store
+            .expect_load_session()
+            .with(predicate::eq("testSID".to_owned()))
+            .times(1)
+            .return_once(move |_| Ok(Some(session)));
+        mock_store
+            .expect_destroy_session()
+            .withf(move |session: &Session| session.id() == expected_sid)
+            .times(1)
+            .return_once(move |_| Ok(()));
+        mock_store
+            .expect_store_session()
+            .times(1)
+            .return_once(move |_| Ok(Some(token.to_string())));
+        let session_store = ArcSessionStore(Arc::new(mock_store));
+
+        let mut render_engine = MockRenderer::new();
+        render_engine
+            .expect_render()
+            .times(1)
+            .withf(move |template: &RenderTemplate| {
+                match &template.value {
+                    Secure(secure) => secure.js_message == Some(js_message.to_owned()),
+                    Unsecure(_) => false
+                }
+            })
+            .return_once(move |_| Ok("".to_string()));
+
+        let mut storer = MockStorer::new();
+        storer
+            .expect_get_indexed::<SymmetricKey>()
+            .times(1)
+            .withf(|path, index| {
+                path == ".keys.default" && *index == Some(SymmetricKey::get_index().unwrap())
+            })
+            .returning(|_, _| {
+                let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
+                    SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
+                ));
+                let sosk = SodiumOxideSymmetricKey::new();
+                Ok(Entry {
+                    path: ".keys.default".to_owned(),
+                    value: States::Unsealed {
+                        builder,
+                        bytes: ByteSource::Vector(VectorByteSource::new(sosk.key.as_ref())),
+                    },
+                })
+            });
+        storer.expect_create().times(1).returning(|_, _| Ok(true));
+
+        let mut token_generator = MockTokenGenerator::new();
+        token_generator.expect_generate_token().returning(|| {
+            Ok("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D".to_owned())
+        });
+
+        let relay_url = "http://asdfs.dsfs/relay";
+        let mut relayer = MockRelayer::new();
+        relayer.expect_relay()
+            .times(1)
+            .with(eq(data_path.to_owned()), eq(relay_url.to_owned()))
+            .return_once(move |_, _| Ok(StatusCode::OK));
+
+        let submit_data = post::submit_data(
+            session_store,
+            Arc::new(render_engine),
+            Arc::new(token_generator),
+            Arc::new(storer),
+            Arc::new(relayer),
+        );
+
+        let res = warp::test::request()
+            .method("POST")
+            .path("/data/E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D")
+            .header("cookie", "sid=testSID")
+            .body(format!(
+                "relay_url={}&path={}&js_message={}&value_type=string&value=qew&submit=Submit",
+                relay_url, data_path, js_message
+            ))
+            .reply(&submit_data)
+            .await;
+
+        assert_eq!(res.status(), 200);
     }
 }

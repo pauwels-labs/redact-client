@@ -4,11 +4,11 @@ use crate::{
         UnsecureTemplateValues,
     },
     routes::{
-        IframeTokensDoNotMatchRejection, SessionTokenNotFoundRejection, StorageErrorRejection,
+        CryptoErrorRejection, IframeTokensDoNotMatchRejection, SessionTokenNotFoundRejection,
     },
     token::TokenGenerator,
 };
-use redact_crypto::{Data, StorageError, Storer};
+use redact_crypto::{CryptoError, Data, Storer};
 use serde::{Deserialize, Serialize};
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{
@@ -161,17 +161,17 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                 let data_entry = match storer.get::<Data>(&path_params.path).await {
                     Ok(e) => Ok(Some(e)),
                     Err(e) => match e {
-                        StorageError::NotFound => Ok(None),
+                        CryptoError::NotFound { .. } => Ok(None),
                         _ => Err(e),
                     },
                 }
-                .map_err(StorageErrorRejection)?;
+                .map_err(CryptoErrorRejection)?;
 
                 let data = match data_entry {
                     Some(data_entry) => storer
                         .resolve::<Data>(data_entry.value)
                         .await
-                        .map_err(StorageErrorRejection)?,
+                        .map_err(CryptoErrorRejection)?,
                     None => {
                         if let Some(data_type) = query_params.data_type {
                             match data_type.to_ascii_lowercase().as_ref() {
@@ -268,7 +268,7 @@ mod tests {
         use mockall::*;
         use redact_crypto::{
             storage::tests::MockStorer, ByteSource, Data, DataBuilder, Entry, HasIndex, States,
-            StorageError, StringDataBuilder, TypeBuilder, VectorByteSource,
+            StringDataBuilder, TypeBuilder, VectorByteSource,
         };
         use serde::Serialize;
 
@@ -456,7 +456,7 @@ mod tests {
                 .withf(|path, index| {
                     path == ".testKey." && *index == Some(Data::get_index().unwrap())
                 })
-                .returning(|_, _| Err(StorageError::NotFound));
+                .returning(|_, _| Err(CryptoError::NotFound));
 
             let with_token_filter = get::with_token(
                 session_store,

@@ -3,7 +3,7 @@ use crate::{
     render::{RenderTemplate, Rendered, Renderer, SecureTemplateValues, TemplateValues},
     routes::{
         BadRequestRejection, CryptoErrorRejection, IframeTokensDoNotMatchRejection,
-        SerializationRejection, SessionTokenNotFoundRejection, StorageErrorRejection,
+        SerializationRejection, SessionTokenNotFoundRejection,
     },
     token::TokenGenerator,
 };
@@ -102,11 +102,11 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                             let key_entry = storer
                                 .get::<SymmetricKey>(".keys.default.")
                                 .await
-                                .map_err(StorageErrorRejection)?;
+                                .map_err(CryptoErrorRejection)?;
                             let key: SymmetricKey = storer
                                 .resolve(key_entry.value.clone())
                                 .await
-                                .map_err(StorageErrorRejection)?;
+                                .map_err(CryptoErrorRejection)?;
                             let builder = TypeBuilder::Data(data.builder());
                             let unsealable = key
                                 .seal(data.clone().into(), None, Some(key_entry.path))
@@ -121,7 +121,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                                     },
                                 )
                                 .await
-                                .map_err(StorageErrorRejection)?;
+                                .map_err(CryptoErrorRejection)?;
 
                             match body_params.relay_url {
                                 Some(ref url) => {

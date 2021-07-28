@@ -2089,6 +2089,7 @@ dependencies = [
  "async-session 2.0.1",
  "async-trait",
  "base64 0.13.0",
+ "bson",
  "futures",
  "handlebars",
  "http",
@@ -2123,16 +2124,15 @@ dependencies = [
 
 [[package]]
 name = "redact-crypto"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76c9e4c7d504e887a868c15a629d206f7c8cd3183f63efe7edca30779b62bd78"
+version = "0.1.0"
+source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=0cc0452ea44663c5827a94fac343e2c4909c5a5b#0cc0452ea44663c5827a94fac343e2c4909c5a5b"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
  "futures",
  "hex",
- "mockall",
  "mongodb",
+ "once_cell",
  "reqwest 0.11.4",
  "serde 1.0.126",
  "serde_json",

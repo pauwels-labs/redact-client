@@ -1,10 +1,6 @@
-use redact_crypto::{CryptoError, StorageError};
+use redact_crypto::CryptoError;
 use serde_json::Error as JsonSerializationError;
 use warp::reject::Reject;
-
-#[derive(Debug)]
-pub struct StorageErrorRejection(pub StorageError);
-impl Reject for StorageErrorRejection {}
 
 #[derive(Debug)]
 pub struct IframeTokensDoNotMatchRejection;

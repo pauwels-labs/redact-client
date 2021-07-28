@@ -1,15 +1,64 @@
 storage:
   url: http://localhost:8081
 crypto:
-  bootstrapidentity:
-    name: seraphin
-    executor:
-      Asymmetric:
-        Secret:
-          SodiumOxide: {}
-    source:
-      Bytes:
-        Fs:
-          path: keys/private/admin.key
-    alg: curve25519xsalsa20poly1305,
-    encrypted_by: "noone"
+  encryption:
+    default:
+      path: ".keys.user.default."
+      value:
+        t: "Unsealed"
+        c:
+          builder:
+            t: "Key"
+            c:
+              t: "Symmetric"
+              c:
+                t: "SodiumOxide"
+                c: {}
+          bytes:
+            t: "Fs"
+            c:
+              path:
+                path: "keys/private/.keys.encryption.default."
+                stem: ".keys.encryption.default."
+  user:
+    key:
+      path: ".keys.user.default."
+      value:
+        t: "Unsealed"
+        c:
+          builder:
+            t: "Key"
+            c:
+              t: "Asymmetric"
+              c:
+                t: "Secret"
+                c:
+                  t: "SodiumOxide"
+                  c: {}
+          bytes:
+            t: "Fs"
+            c:
+              path:
+                path: "keys/private/.keys.user.default."
+                stem: ".keys.user.default."
+  client:
+    key:
+      path: ".keys.client.default."
+      value:
+        t: "Unsealed"
+        c:
+          builder:
+            t: "Key"
+            c:
+              t: "Asymmetric"
+              c:
+                t: "Secret"
+                c:
+                  t: "SodiumOxide"
+                  c: {}
+          bytes:
+            t: "Fs"
+            c:
+              path:
+                path: "keys/private/.keys.client.default."
+                stem: ".keys.client.default."

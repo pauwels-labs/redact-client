@@ -21,7 +21,7 @@ pub async fn setup_entry<
     let entry = config
         .get::<Entry>(config_path)
         .map_err(|e| ClientError::ConfigError { source: e })?;
-    match storer.resolve::<Z>(entry.value).await {
+    match storer.resolve::<Z>(&entry.value).await {
         Ok(sak) => Ok(sak),
         Err(e) => match e {
             CryptoError::NotFound { .. } => match entry.value {

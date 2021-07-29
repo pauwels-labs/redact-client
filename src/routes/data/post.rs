@@ -8,7 +8,10 @@ use crate::{
     },
     token::TokenGenerator,
 };
-use redact_crypto::{Data, HasBuilder, State, Storer, SymmetricKey, SymmetricSealer, TypeBuilder};
+use redact_crypto::{
+    Data, HasBuilder, HasByteSource, State, Storer, SymmetricKey, SymmetricSealer, ToState,
+    TypeBuilder,
+};
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use warp::{Filter, Rejection, Reply};
@@ -104,16 +107,19 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                             Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
                         } else {
                             let key_entry = storer
-                                .get::<SymmetricKey>(".keys.default")
+                                .get::<SymmetricKey>(".keys.encryption.default.")
                                 .await
                                 .map_err(CryptoErrorRejection)?;
                             let key: SymmetricKey = storer
-                                .resolve(key_entry.value)
+                                .resolve(&key_entry.value)
                                 .await
                                 .map_err(CryptoErrorRejection)?;
                             let builder = TypeBuilder::Data(data.builder());
-                            let cipher_source =
-                                key.seal(data.into(), None).map_err(CryptoErrorRejection)?;
+                            let unsealable = key
+                                .take_seal(data.byte_source(), None, |key| {
+                                    key.to_ref_state(".keys.encryption.default.".to_owned())
+                                })
+                                .map_err(CryptoErrorRejection)?;
 
                             storer
                                 .create(
@@ -202,27 +208,49 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
 mod tests {
     use crate::relayer::tests::MockRelayer;
     use crate::render::tests::MockRenderer;
+    use crate::render::RenderTemplate;
+    use crate::render::TemplateValues::{Secure, Unsecure};
     use crate::routes::data::post;
     use crate::token::tests::MockTokenGenerator;
     use async_trait::async_trait;
+    use http::StatusCode;
     use mockall::predicate::*;
     use mockall::*;
+    use mongodb::bson::Document;
     use redact_crypto::{
         key::sodiumoxide::{SodiumOxideSymmetricKey, SodiumOxideSymmetricKeyBuilder},
-        storage::tests::MockStorer,
-        ByteSource, Entry, HasIndex, KeyBuilder, State, SymmetricKey, SymmetricKeyBuilder,
-        TypeBuilder, VectorByteSource,
+        ByteSource, CryptoError, Entry, EntryPath, HasBuilder, HasIndex, KeyBuilder, State, Storer,
+        SymmetricKey, SymmetricKeyBuilder, TypeBuilder, VectorByteSource,
     };
     use serde::Serialize;
-
-    use crate::render::RenderTemplate;
-    use crate::render::TemplateValues::{Secure, Unsecure};
-    use http::StatusCode;
     use std::{
         fmt::{self, Debug, Formatter},
         sync::Arc,
     };
     use warp_sessions::{ArcSessionStore, Session, SessionStore};
+
+    mock! {
+    pub Storer {}
+    #[async_trait]
+    impl Storer for Storer {
+    async fn get_indexed<T: HasBuilder + 'static>(
+        &self,
+        path: &str,
+        index: &Option<Document>,
+    ) -> Result<Entry, CryptoError>;
+    async fn list_indexed<T: HasBuilder + Send + 'static>(
+        &self,
+        path: &str,
+        skip: i64,
+        page_size: i64,
+        index: &Option<Document>,
+    ) -> Result<Vec<Entry>, CryptoError>;
+    async fn create(&self, path: EntryPath, value: State) -> Result<bool, CryptoError>;
+    }
+    impl Clone for Storer {
+        fn clone(&self) -> Self;
+    }
+    }
 
     mock! {
                 pub SessionStore {}
@@ -303,7 +331,9 @@ mod tests {
             .expect_get_indexed::<SymmetricKey>()
             .times(1)
             .withf(|path, index| {
-                path == ".keys.default" && *index == Some(SymmetricKey::get_index().unwrap())
+                println!("{:?}", path);
+                path == ".keys.encryption.default."
+                    && *index == Some(SymmetricKey::get_index().unwrap())
             })
             .returning(|_, _| {
                 let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
@@ -311,7 +341,7 @@ mod tests {
                 ));
                 let sosk = SodiumOxideSymmetricKey::new();
                 Ok(Entry {
-                    path: ".keys.default.".to_owned(),
+                    path: ".keys.encryption.default.".to_owned(),
                     value: State::Unsealed {
                         builder,
                         bytes: ByteSource::Vector(VectorByteSource::new(sosk.key.as_ref())),
@@ -392,7 +422,8 @@ mod tests {
             .expect_get_indexed::<SymmetricKey>()
             .times(1)
             .withf(|path, index| {
-                path == ".keys.default" && *index == Some(SymmetricKey::get_index().unwrap())
+                path == ".keys.encryption.default."
+                    && *index == Some(SymmetricKey::get_index().unwrap())
             })
             .returning(|_, _| {
                 let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
@@ -400,7 +431,7 @@ mod tests {
                 ));
                 let sosk = SodiumOxideSymmetricKey::new();
                 Ok(Entry {
-                    path: ".keys.default".to_owned(),
+                    path: ".keys.encryption.default.".to_owned(),
                     value: State::Unsealed {
                         builder,
                         bytes: ByteSource::Vector(VectorByteSource::new(sosk.key.as_ref())),

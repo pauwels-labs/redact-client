@@ -2111,6 +2111,7 @@ dependencies = [
  "hyper 0.14.10",
  "mockall",
  "mockito",
+ "mongodb",
  "percent-encoding",
  "rand 0.8.4",
  "rand_pcg 0.3.1",
@@ -2142,7 +2143,7 @@ dependencies = [
 [[package]]
 name = "redact-crypto"
 version = "0.1.0"
-source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=31e1347977d9c54c1d83f85d7daf180b5157204c#31e1347977d9c54c1d83f85d7daf180b5157204c"
+source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=489a6ad08eb3a6e753559b145f73ed609dfa8646#489a6ad08eb3a6e753559b145f73ed609dfa8646"
 dependencies = [
  "async-trait",
  "base64 0.13.0",

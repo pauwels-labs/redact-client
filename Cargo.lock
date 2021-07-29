@@ -2142,7 +2142,7 @@ dependencies = [
 [[package]]
 name = "redact-crypto"
 version = "0.1.0"
-source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=0cc0452ea44663c5827a94fac343e2c4909c5a5b#0cc0452ea44663c5827a94fac343e2c4909c5a5b"
+source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=31e1347977d9c54c1d83f85d7daf180b5157204c#31e1347977d9c54c1d83f85d7daf180b5157204c"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
@@ -2151,6 +2151,7 @@ dependencies = [
  "mongodb",
  "once_cell",
  "reqwest 0.11.4",
+ "ring",
  "serde 1.0.126",
  "serde_json",
  "sodiumoxide",

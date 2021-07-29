@@ -1,3 +1,4 @@
+use crate::relayer::Relayer;
 use crate::routes::error::RelayRejection;
 use crate::{
     render::{RenderTemplate, Rendered, Renderer, SecureTemplateValues, TemplateValues},
@@ -7,12 +8,11 @@ use crate::{
     },
     token::TokenGenerator,
 };
-use redact_crypto::{Data, HasBuilder, States, Storer, SymmetricKey, SymmetricSealer, TypeBuilder};
+use redact_crypto::{Data, HasBuilder, State, Storer, SymmetricKey, SymmetricSealer, TypeBuilder};
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore};
-use crate::relayer::Relayer;
 
 #[derive(Deserialize, Serialize)]
 struct SubmitDataPathParams {
@@ -25,7 +25,7 @@ struct SubmitDataBodyParams {
     value: Option<String>,
     value_type: String,
     relay_url: Option<String>,
-    js_message: Option<String>
+    js_message: Option<String>,
 }
 
 impl TryFrom<SubmitDataBodyParams> for Data {
@@ -60,7 +60,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
     render_engine: R,
     token_generator: T,
     storer: H,
-    relayer: Q
+    relayer: Q,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::any()
         .and(warp::path!("data" / String).map(|token| SubmitDataPathParams { token }))
@@ -108,18 +108,17 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                 .await
                                 .map_err(CryptoErrorRejection)?;
                             let key: SymmetricKey = storer
-                                .resolve(key_entry.value.clone())
+                                .resolve(key_entry.value)
                                 .await
                                 .map_err(CryptoErrorRejection)?;
                             let builder = TypeBuilder::Data(data.builder());
-                            let unsealable = key
-                                .seal(data.clone().into(), None, Some(key_entry.path))
-                                .map_err(CryptoErrorRejection)?;
+                            let cipher_source =
+                                key.seal(data.into(), None).map_err(CryptoErrorRejection)?;
 
                             storer
                                 .create(
                                     body_params.path.clone(),
-                                    States::Sealed {
+                                    State::Sealed {
                                         builder,
                                         unsealable,
                                     },
@@ -128,9 +127,10 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                 .map_err(CryptoErrorRejection)?;
 
                             if let Some(relay_url) = body_params.relay_url.clone() {
-                                relayer.relay(body_params.path.clone(), relay_url)
-                                .await
-                                .map_err(|_| warp::reject::custom(RelayRejection))?;
+                                relayer
+                                    .relay(body_params.path.clone(), relay_url)
+                                    .await
+                                    .map_err(|_| warp::reject::custom(RelayRejection))?;
                             }
 
                             Ok::<_, Rejection>((
@@ -200,29 +200,29 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
 
 #[cfg(test)]
 mod tests {
+    use crate::relayer::tests::MockRelayer;
     use crate::render::tests::MockRenderer;
     use crate::routes::data::post;
     use crate::token::tests::MockTokenGenerator;
-    use crate::relayer::tests::MockRelayer;
     use async_trait::async_trait;
     use mockall::predicate::*;
     use mockall::*;
     use redact_crypto::{
         key::sodiumoxide::{SodiumOxideSymmetricKey, SodiumOxideSymmetricKeyBuilder},
         storage::tests::MockStorer,
-        ByteSource, Entry, HasIndex, KeyBuilder, States, SymmetricKey, SymmetricKeyBuilder,
+        ByteSource, Entry, HasIndex, KeyBuilder, State, SymmetricKey, SymmetricKeyBuilder,
         TypeBuilder, VectorByteSource,
     };
     use serde::Serialize;
 
+    use crate::render::RenderTemplate;
+    use crate::render::TemplateValues::{Secure, Unsecure};
+    use http::StatusCode;
     use std::{
         fmt::{self, Debug, Formatter},
         sync::Arc,
     };
     use warp_sessions::{ArcSessionStore, Session, SessionStore};
-    use http::StatusCode;
-    use crate::render::RenderTemplate;
-    use crate::render::TemplateValues::{Secure, Unsecure};
 
     mock! {
                 pub SessionStore {}
@@ -312,7 +312,7 @@ mod tests {
                 let sosk = SodiumOxideSymmetricKey::new();
                 Ok(Entry {
                     path: ".keys.default.".to_owned(),
-                    value: States::Unsealed {
+                    value: State::Unsealed {
                         builder,
                         bytes: ByteSource::Vector(VectorByteSource::new(sosk.key.as_ref())),
                     },
@@ -341,7 +341,7 @@ mod tests {
             .header("cookie", "sid=testSID")
             .body(format!(
                 "path={}&value_type=string&value=qew&submit=Submit",
-                 data_path
+                data_path
             ))
             .reply(&submit_data)
             .await;
@@ -381,11 +381,9 @@ mod tests {
         render_engine
             .expect_render()
             .times(1)
-            .withf(move |template: &RenderTemplate| {
-                match &template.value {
-                    Secure(secure) => secure.js_message == Some(js_message.to_owned()),
-                    Unsecure(_) => false
-                }
+            .withf(move |template: &RenderTemplate| match &template.value {
+                Secure(secure) => secure.js_message == Some(js_message.to_owned()),
+                Unsecure(_) => false,
             })
             .return_once(move |_| Ok("".to_string()));
 
@@ -403,7 +401,7 @@ mod tests {
                 let sosk = SodiumOxideSymmetricKey::new();
                 Ok(Entry {
                     path: ".keys.default".to_owned(),
-                    value: States::Unsealed {
+                    value: State::Unsealed {
                         builder,
                         bytes: ByteSource::Vector(VectorByteSource::new(sosk.key.as_ref())),
                     },
@@ -418,7 +416,8 @@ mod tests {
 
         let relay_url = "http://asdfs.dsfs/relay";
         let mut relayer = MockRelayer::new();
-        relayer.expect_relay()
+        relayer
+            .expect_relay()
             .times(1)
             .with(eq(data_path.to_owned()), eq(relay_url.to_owned()))
             .return_once(move |_, _| Ok(StatusCode::OK));

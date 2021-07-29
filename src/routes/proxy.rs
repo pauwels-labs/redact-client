@@ -4,6 +4,10 @@ use crate::routes::error::{RelayRejection, ProxyRejection};
 use serde::{Deserialize, Serialize};
 use reqwest;
 use warp::http::HeaderValue;
+use url::Url;
+use addr::parser::DomainName;
+use addr::psl::List;
+use crate::error::ClientError;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 struct ProxyBodyParams {
@@ -16,15 +20,26 @@ pub fn post<Q: Relayer>(
     warp::any()
         .and(warp::path!("proxy"))
         .and(warp::filters::body::json::<ProxyBodyParams>())
+        .and(warp::header::<String>("Origin"))
         .and(warp::any().map(move || relayer.clone()))
         .and_then(
             move |
                 body_params: ProxyBodyParams,
+                origin_header: String,
                 relayer: Q
             | async move {
-                relayer.get(body_params.host_url)
-                    .await
-                    .map_err(|_| warp::reject::custom(RelayRejection))
+                let origin_root = parse_url_root(&origin_header)
+                    .map_err(|_| warp::reject::custom(RelayRejection))?;
+                let dest_root = parse_url_root(&body_params.host_url)
+                    .map_err(|_| warp::reject::custom(RelayRejection))?;
+
+                if dest_root != origin_root {
+                    Err(warp::reject::custom(RelayRejection))
+                } else {
+                    relayer.get(body_params.host_url)
+                        .await
+                        .map_err(|_| warp::reject::custom(RelayRejection))
+                }
             }
         )
         .and_then(
@@ -41,6 +56,32 @@ pub fn post<Q: Relayer>(
                     ))
             }
         )
+}
+
+fn parse_url_root(url: &str) -> Result<Option<String>, ClientError>{
+    let origin_domain = Url::parse(url)
+        .map_err(|e| {
+            ClientError::InternalError {
+                source: Box::new(e),
+            }
+        }).map(|p| {
+            p.domain().map(str::to_string)
+        })?;
+
+    match origin_domain {
+        Some(origin) => {
+            let parsed_result = List.parse_domain_name(&origin)
+                .map_err(|e| {
+                    ClientError::DomainParsingError {
+                        kind: e.kind(),
+                        input: e.input().to_owned(),
+                    }
+                })?;
+            Ok(parsed_result.root().map(str::to_string))
+        },
+        None => Ok(Some("".to_owned()))
+    }
+
 }
 
 #[cfg(test)]

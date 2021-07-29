@@ -420,6 +420,7 @@ mod tests {
                         edit: None,
                         relay_url: None,
                         js_message: None,
+                        js_height_msg_prefix: None,
                     });
                     template.value == expected_value
                 })
@@ -562,7 +563,8 @@ mod tests {
                         edit: None,
                         data_type: None,
                         relay_url: None,
-                        js_message: None
+                        js_message: None,
+                        js_height_msg_prefix: None,
                     });
 
                     template.value == expected_value
@@ -609,7 +611,8 @@ mod tests {
                         edit: None,
                         data_type: None,
                         relay_url: None,
-                        js_message: None
+                        js_message: None,
+                        js_height_msg_prefix: None,
                     });
 
                     template.value == expected_value
@@ -656,7 +659,8 @@ mod tests {
                         edit: Some(true),
                         data_type: None,
                         relay_url: None,
-                        js_message: None
+                        js_message: None,
+                        js_height_msg_prefix: None,
                     });
                     template.value == expected_value
                 })
@@ -702,7 +706,8 @@ mod tests {
                         edit: Some(false),
                         data_type: None,
                         relay_url: None,
-                        js_message: None
+                        js_message: None,
+                        js_height_msg_prefix: None,
                     });
                     template.value == expected_value
                 })
@@ -751,7 +756,8 @@ mod tests {
                         edit: Some(false),
                         data_type: None,
                         relay_url: None,
-                        js_message: Some(js_message.to_owned())
+                        js_message: Some(js_message.to_owned()),
+                        js_height_msg_prefix: None,
                     });
                     template.value == expected_value
                 })
@@ -805,6 +811,34 @@ mod tests {
 
             let res = warp::test::request()
                 .path(&format!("/data/.testKey.?edit=false&js_message={}", js_message))
+                .reply(&without_token_filter)
+                .await;
+            assert_eq!(res.status(), 500);
+        }
+
+        #[tokio::test]
+        async fn test_without_token_with_js_height_msg_prefix_invalid() {
+            let js_height_msg_prefix = "invalid%5C%22%29%3B+mesaage%7D%7B";
+
+            let session_store = MemoryStore::new();
+            let mut render_engine = MockRenderer::new();
+            render_engine
+                .expect_render()
+                .times(0);
+
+            let mut token_generator = MockTokenGenerator::new();
+            token_generator
+                .expect_generate_token()
+                .times(0);
+
+            let without_token_filter = get::without_token(
+                session_store,
+                Arc::new(render_engine),
+                Arc::new(token_generator),
+            );
+
+            let res = warp::test::request()
+                .path(&format!("/data/.testKey.?edit=false&js_height_msg_prefix={}", js_height_msg_prefix))
                 .reply(&without_token_filter)
                 .await;
             assert_eq!(res.status(), 500);

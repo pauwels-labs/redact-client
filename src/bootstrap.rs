@@ -3,7 +3,7 @@ use std::convert::TryInto;
 
 use redact_config::Configurator;
 use redact_crypto::{
-    Builder, CryptoError, Entry, HasBuilder, HasByteSource, HasIndex, States, Storer,
+    Builder, CryptoError, Entry, HasBuilder, HasByteSource, HasIndex, State, Storer,
     TypeBuilderContainer,
 };
 
@@ -21,13 +21,13 @@ pub async fn setup_entry<
     let entry = config
         .get::<Entry>(config_path)
         .map_err(|e| ClientError::ConfigError { source: e })?;
-    match storer.resolve::<Z>(entry.value.clone()).await {
+    match storer.resolve::<Z>(&entry.value).await {
         Ok(sak) => Ok(sak),
         Err(e) => match e {
             CryptoError::NotFound { .. } => match entry.value {
-                States::Referenced { .. } => panic!(),
-                States::Unsealed { builder, mut bytes } => {
-                    let s = States::Unsealed {
+                State::Referenced { .. } => panic!(),
+                State::Unsealed { builder, mut bytes } => {
+                    let s = State::Unsealed {
                         builder,
                         bytes: bytes.clone(),
                     };
@@ -50,7 +50,7 @@ pub async fn setup_entry<
                         .map_err(|e| ClientError::SourceError { source: e })?;
                     Ok(sak)
                 }
-                States::Sealed { .. } => panic!(),
+                State::Sealed { .. } => panic!(),
             },
             _ => Err(ClientError::CryptoError { source: e }),
         },

@@ -1,3 +1,5 @@
+certificate:
+  filepath: "keys/private/tmpcert"
 storage:
   url: http://localhost:8081
 crypto:

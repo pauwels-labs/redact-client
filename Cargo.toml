@@ -44,7 +44,7 @@ warp-sessions = "1.0.13"
 base64 = "0.13.0"
 sodiumoxide = "0.2.6"
 http = "0.2.4"
-redact-crypto = { git = "https://github.com/pauwels-labs/redact-crypto.git", rev = "0cc0452ea44663c5827a94fac343e2c4909c5a5b" }
+redact-crypto = { git = "https://github.com/pauwels-labs/redact-crypto.git", rev = "489a6ad08eb3a6e753559b145f73ed609dfa8646" }
 bson = "1.2.2"
 regex = "1.5.4"
 percent-encoding = "2.1.0"
@@ -54,3 +54,4 @@ addr = "0.14.0"
 [dev-dependencies]
 mockall = "0.9.0"
 mockito = "0.30.0"
+mongodb = "1.2.1"

@@ -4,6 +4,14 @@ use std::fmt::{self, Display};
 /// All errors that the client will encounter
 #[derive(Debug)]
 pub enum ClientError {
+    /// Represents an error which occurred in some internal system
+    InternalError {
+        source: Box<dyn Error + Send + Sync>,
+    },
+
+    /// Error occurred when trying to verify a domain
+    DomainParsingError { kind: addr::error::Kind, input: String },
+
     /// Error happened with the config
     ConfigError { source: redact_config::ConfigError },
 
@@ -17,6 +25,8 @@ pub enum ClientError {
 impl Error for ClientError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
+            ClientError::InternalError { ref source } => Some(source.as_ref()),
+            ClientError::DomainParsingError { .. } => None,
             ClientError::ConfigError { ref source } => Some(source),
             ClientError::CryptoError { ref source } => Some(source),
             ClientError::SourceError { ref source } => Some(source),
@@ -27,6 +37,12 @@ impl Error for ClientError {
 impl Display for ClientError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            ClientError::InternalError { .. } => {
+                write!(f, "Internal error occurred")
+            }
+            ClientError::DomainParsingError { ref kind, ref input } => {
+                write!(f, "Error occurred during domain parsing ({:?}) on input: {}", kind, input)
+            }
             ClientError::ConfigError { .. } => {
                 write!(f, "Error occured when handling config")
             }

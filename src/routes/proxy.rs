@@ -117,6 +117,7 @@ mod tests {
             .path("/proxy")
             .body(format!("{{\"host_url\":\"{}\"}}", host_url))
             .header("Content-Type", "application/json")
+            .header("Origin", "http://host.com")
             .reply(&proxy)
             .await;
 
@@ -147,6 +148,7 @@ mod tests {
             .path("/proxy")
             .body(format!("{{\"host_url\":\"{}\"}}", host_url))
             .header("Content-Type", "application/json")
+            .header("Origin", "http://host.com")
             .reply(&proxy)
             .await;
 

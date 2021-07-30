@@ -91,6 +91,7 @@ mod tests {
     use mockall::predicate::*;
     use std::sync::Arc;
     use warp::http::HeaderValue;
+    use crate::error::ClientError;
 
     #[tokio::test]
     async fn test_post() {
@@ -131,7 +132,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_post_relay_request_error() {
-        let host_url = "http://host.com/proxy/session/whatever";
+        let host_url = "http://abr.host.co.uk/proxy/session/whatever";
 
         let mut relayer = MockRelayer::new();
         relayer.expect_get()
@@ -148,10 +149,55 @@ mod tests {
             .path("/proxy")
             .body(format!("{{\"host_url\":\"{}\"}}", host_url))
             .header("Content-Type", "application/json")
-            .header("Origin", "http://host.com")
+            .header("Origin", "http://host.co.uk")
             .reply(&proxy)
             .await;
 
         assert_eq!(res.status(), 500);
+    }
+
+    #[tokio::test]
+    async fn test_post_relay_request_different_origin() {
+        let host_url = "http://host.com/proxy/session/whatever";
+
+        let mut relayer = MockRelayer::new();
+        relayer.expect_get()
+            .times(0);
+
+        let proxy = proxy::post(
+            Arc::new(relayer),
+        );
+
+        let res = warp::test::request()
+            .method("POST")
+            .path("/proxy")
+            .body(format!("{{\"host_url\":\"{}\"}}", host_url))
+            .header("Content-Type", "application/json")
+            .header("Origin", "http://abc.com")
+            .reply(&proxy)
+            .await;
+
+        assert_eq!(res.status(), 500);
+    }
+
+    #[tokio::test]
+    async fn test_parse_url_root() {
+        let host_url = "http://www.abc.123.host.co.uk";
+        let res = proxy::parse_url_root(host_url).unwrap();
+        assert_eq!(res, Some("host.co.uk".to_owned()));
+    }
+
+    #[tokio::test]
+    async fn test_parse_url_root_bad_domain() {
+        let host_url = "https://127.0.0.1/";
+        let res = proxy::parse_url_root(host_url).unwrap();
+        assert_eq!(res, Some("".to_owned()));
+    }
+
+    #[tokio::test]
+    async fn test_parse_url_root_invalid_domain() {
+        let host_url = "scoopdolladolla./.a";
+        let res = proxy::parse_url_root(host_url);
+        assert!(res.is_err());
     }
 }

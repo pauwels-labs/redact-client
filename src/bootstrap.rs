@@ -1,9 +1,9 @@
 use bson::Document;
-use std::convert::TryInto;
+use std::{convert::TryInto, error::Error};
 
 use redact_config::Configurator;
 use redact_crypto::{
-    Builder, CryptoError, Entry, HasBuilder, HasByteSource, HasIndex, State, Storer,
+    Builder, CryptoError, Entry, HasBuilder, HasByteSource, HasIndex, SourceError, State, Storer,
     TypeBuilderContainer,
 };
 
@@ -25,16 +25,8 @@ pub async fn setup_entry<
         Ok(sak) => Ok(sak),
         Err(e) => match e {
             CryptoError::NotFound { .. } => match entry.value {
-                State::Referenced { .. } => panic!(),
+                State::Referenced { .. } => Err(ClientError::CryptoError { source: e }),
                 State::Unsealed { builder, mut bytes } => {
-                    let s = State::Unsealed {
-                        builder,
-                        bytes: bytes.clone(),
-                    };
-                    storer
-                        .create(entry.path, s)
-                        .await
-                        .map_err(|e| ClientError::CryptoError { source: e })?;
                     let sakb: <Z as HasBuilder>::Builder = TypeBuilderContainer(builder)
                         .try_into()
                         .map_err(|e| ClientError::CryptoError { source: e })?;
@@ -48,9 +40,21 @@ pub async fn setup_entry<
                                 .map_err(|e| ClientError::SourceError { source: e })?,
                         )
                         .map_err(|e| ClientError::SourceError { source: e })?;
+                    let s = State::Unsealed { builder, bytes };
+                    storer
+                        .create(entry.path, s)
+                        .await
+                        .map_err(|e| ClientError::CryptoError { source: e })?;
                     Ok(sak)
                 }
-                State::Sealed { .. } => panic!(),
+                State::Sealed {
+                    builder,
+                    unsealable,
+                } => {
+                    let sakb: <Z as HasBuilder>::Builder = TypeBuilderContainer(builder)
+                        .try_into()
+                        .map_err(|e| ClientError::CryptoError { source: e })?;
+                }
             },
             _ => Err(ClientError::CryptoError { source: e }),
         },

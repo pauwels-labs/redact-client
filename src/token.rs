@@ -7,9 +7,6 @@ use warp::reject::Reject;
 
 #[derive(Error, Debug)]
 pub enum TokenGenerationError {
-    #[error("Failed to retrieve the number of nanoseconds since UNIX epoch")]
-    SystemTimeError { source: std::time::SystemTimeError },
-
     #[error("Failed to generate cryptographically secure random bytes")]
     RandError { source: rand::Error },
 }

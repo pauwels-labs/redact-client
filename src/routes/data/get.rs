@@ -1,27 +1,26 @@
+use crate::routes::error::QueryParamValidationRejection;
 use crate::{
     render::{
         RenderTemplate, Rendered, Renderer, SecureTemplateValues, TemplateValues,
         UnsecureTemplateValues,
     },
     routes::{
-        IframeTokensDoNotMatchRejection, SessionTokenNotFoundRejection, StorageErrorRejection,
+        CryptoErrorRejection, IframeTokensDoNotMatchRejection, SessionTokenNotFoundRejection,
     },
     token::TokenGenerator,
 };
-use redact_crypto::{Data, StorageError, Storer};
+use percent_encoding::percent_decode_str;
+use redact_crypto::{CryptoError, Data, Storer};
+use regex::Regex;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{
     self, CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
 };
-use regex::Regex;
-use percent_encoding::percent_decode_str;
-use crate::routes::error::QueryParamValidationRejection;
-use serde::de::DeserializeOwned;
-
 
 pub trait Validate {
-    fn validate(&self) -> Result<(), Rejection> ;
+    fn validate(&self) -> Result<(), Rejection>;
 }
 
 #[derive(Deserialize, Serialize)]
@@ -73,10 +72,9 @@ struct WithTokenPathParams {
 
 pub fn validated_query_params<T: 'static + DeserializeOwned + Send + Validate>(
 ) -> impl Filter<Extract = (T,), Error = Rejection> + Copy {
-    warp::query::<T>()
-        .and_then(move |param: T| async move {
-            param.validate()?;
-            Ok::<_, Rejection>(param)
+    warp::query::<T>().and_then(move |param: T| async move {
+        param.validate()?;
+        Ok::<_, Rejection>(param)
     })
 }
 
@@ -109,7 +107,6 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R| async move {
-
                 let utv = UnsecureTemplateValues {
                     path: path_params.path.clone(),
                     token: token.clone(),
@@ -202,17 +199,17 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                 let data_entry = match storer.get::<Data>(&path_params.path).await {
                     Ok(e) => Ok(Some(e)),
                     Err(e) => match e {
-                        StorageError::NotFound => Ok(None),
+                        CryptoError::NotFound { .. } => Ok(None),
                         _ => Err(e),
                     },
                 }
-                .map_err(StorageErrorRejection)?;
+                .map_err(CryptoErrorRejection)?;
 
                 let data = match data_entry {
                     Some(data_entry) => storer
-                        .resolve::<Data>(data_entry.value)
+                        .resolve::<Data>(&data_entry.value)
                         .await
-                        .map_err(StorageErrorRejection)?,
+                        .map_err(CryptoErrorRejection)?,
                     None => {
                         if let Some(data_type) = query_params.data_type {
                             match data_type.to_ascii_lowercase().as_ref() {
@@ -298,28 +295,55 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
         .and_then(warp_sessions::reply::with_session)
 }
 
-fn validate_base64_query_param(str: Option<String>)-> Result<(), Rejection> {
+fn validate_base64_query_param(str: Option<String>) -> Result<(), Rejection> {
     match str {
-        Some(msg) => {
-            percent_decode_str(&msg)
-                .decode_utf8()
-                .map_err(|_| warp::reject::custom(QueryParamValidationRejection))
-                .and_then(|str| {
-                    let base64_regex = Regex::new(r"^[A-Za-z0-9+/]+={0,2}$").unwrap();
-                    match base64_regex.is_match(&str.to_string()) {
-                        true => Ok::<_, Rejection>(()),
-                        false => Err(warp::reject::custom(QueryParamValidationRejection))
-                    }
-                })
-
-        },
-        None => Ok(())
+        Some(msg) => percent_decode_str(&msg)
+            .decode_utf8()
+            .map_err(|_| warp::reject::custom(QueryParamValidationRejection))
+            .and_then(|str| {
+                let base64_regex = Regex::new(r"^[A-Za-z0-9+/]+={0,2}$").unwrap();
+                match base64_regex.is_match(&str.to_string()) {
+                    true => Ok::<_, Rejection>(()),
+                    false => Err(warp::reject::custom(QueryParamValidationRejection)),
+                }
+            }),
+        None => Ok(()),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
+    use mockall::predicate::*;
+    use mockall::*;
+    use mongodb::bson::Document;
+    use redact_crypto::{CryptoError, Entry, EntryPath, HasBuilder, State, Storer};
+
+    mock! {
+    pub Storer {}
+    #[async_trait]
+    impl Storer for Storer {
+    async fn get_indexed<T: HasBuilder + 'static>(
+        &self,
+        path: &str,
+        index: &Option<Document>,
+    ) -> Result<Entry, CryptoError>;
+    async fn list_indexed<T: HasBuilder + Send + 'static>(
+        &self,
+        path: &str,
+        skip: i64,
+        page_size: i64,
+        index: &Option<Document>,
+    ) -> Result<Vec<Entry>, CryptoError>;
+    async fn create(&self, path: EntryPath, value: State) -> Result<bool, CryptoError>;
+    }
+    impl Clone for Storer {
+        fn clone(&self) -> Self;
+    }
+    }
+
     mod with_token {
+        use super::MockStorer;
         use crate::render::{
             tests::MockRenderer, RenderTemplate, SecureTemplateValues, TemplateValues,
         };
@@ -329,8 +353,8 @@ mod tests {
         use mockall::predicate::*;
         use mockall::*;
         use redact_crypto::{
-            storage::tests::MockStorer, ByteSource, Data, DataBuilder, Entry, HasIndex, States,
-            StorageError, StringDataBuilder, TypeBuilder, VectorByteSource,
+            ByteSource, CryptoError, Data, DataBuilder, Entry, HasIndex, MongoStorerError, State,
+            StringDataBuilder, TypeBuilder, VectorByteSource,
         };
         use serde::Serialize;
 
@@ -449,7 +473,7 @@ mod tests {
                     let builder = TypeBuilder::Data(DataBuilder::String(StringDataBuilder {}));
                     Ok(Entry {
                         path: ".testKey.".to_owned(),
-                        value: States::Unsealed {
+                        value: State::Unsealed {
                             builder,
                             bytes: ByteSource::Vector(VectorByteSource::new(b"someval")),
                         },
@@ -520,7 +544,11 @@ mod tests {
                 .withf(|path, index| {
                     path == ".testKey." && *index == Some(Data::get_index().unwrap())
                 })
-                .returning(|_, _| Err(StorageError::NotFound));
+                .returning(|_, _| {
+                    Err(CryptoError::NotFound {
+                        source: Box::new(MongoStorerError::NotFound),
+                    })
+                });
 
             let with_token_filter = get::with_token(
                 session_store,
@@ -546,7 +574,6 @@ mod tests {
         use crate::token::tests::MockTokenGenerator;
         use std::sync::Arc;
         use warp_sessions::MemoryStore;
-        use mockall::PredicateStrExt;
 
         #[tokio::test]
         async fn without_token_with_no_query_params() {
@@ -738,7 +765,6 @@ mod tests {
             assert_eq!(res.status(), 200);
         }
 
-
         #[tokio::test]
         async fn test_without_token_with_js_message_valid() {
             let js_message = "dXBkYXRl";
@@ -782,7 +808,10 @@ mod tests {
             );
 
             let res = warp::test::request()
-                .path(&format!("/data/.testKey.?edit=false&js_message={}", js_message))
+                .path(&format!(
+                    "/data/.testKey.?edit=false&js_message={}",
+                    js_message
+                ))
                 .reply(&without_token_filter)
                 .await;
             assert_eq!(res.status(), 200);
@@ -794,14 +823,10 @@ mod tests {
 
             let session_store = MemoryStore::new();
             let mut render_engine = MockRenderer::new();
-            render_engine
-                .expect_render()
-                .times(0);
+            render_engine.expect_render().times(0);
 
             let mut token_generator = MockTokenGenerator::new();
-            token_generator
-                .expect_generate_token()
-                .times(0);
+            token_generator.expect_generate_token().times(0);
 
             let without_token_filter = get::without_token(
                 session_store,
@@ -810,7 +835,10 @@ mod tests {
             );
 
             let res = warp::test::request()
-                .path(&format!("/data/.testKey.?edit=false&js_message={}", js_message))
+                .path(&format!(
+                    "/data/.testKey.?edit=false&js_message={}",
+                    js_message
+                ))
                 .reply(&without_token_filter)
                 .await;
             assert_eq!(res.status(), 500);

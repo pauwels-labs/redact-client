@@ -5,17 +5,17 @@ storage:
 crypto:
   encryption:
     default:
-      path: ".keys.user.default."
+      path: ".keys.encryption.default."
+      builder:
+        t: "Key"
+        c:
+          t: "Symmetric"
+          c:
+            t: "SodiumOxide"
+            c: {}
       value:
         t: "Unsealed"
         c:
-          builder:
-            t: "Key"
-            c:
-              t: "Symmetric"
-              c:
-                t: "SodiumOxide"
-                c: {}
           bytes:
             t: "Fs"
             c:
@@ -25,18 +25,18 @@ crypto:
   user:
     key:
       path: ".keys.user.default."
+      builder:
+        t: "Key"
+        c:
+          t: "Asymmetric"
+          c:
+            t: "Secret"
+            c:
+              t: "SodiumOxideCurve25519"
+              c: {}
       value:
         t: "Unsealed"
         c:
-          builder:
-            t: "Key"
-            c:
-              t: "Asymmetric"
-              c:
-                t: "Secret"
-                c:
-                  t: "SodiumOxide"
-                  c: {}
           bytes:
             t: "Fs"
             c:
@@ -46,18 +46,18 @@ crypto:
   client:
     key:
       path: ".keys.client.default."
+      builder:
+        t: "Key"
+        c:
+          t: "Asymmetric"
+          c:
+            t: "Secret"
+            c:
+              t: "SodiumOxideCurve25519"
+              c: {}
       value:
         t: "Unsealed"
         c:
-          builder:
-            t: "Key"
-            c:
-              t: "Asymmetric"
-              c:
-                t: "Secret"
-                c:
-                  t: "SodiumOxide"
-                  c: {}
           bytes:
             t: "Fs"
             c:

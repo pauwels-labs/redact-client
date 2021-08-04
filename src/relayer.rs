@@ -1,18 +1,18 @@
-use warp::reject::Reject;
+use async_trait::async_trait;
 use http::StatusCode;
-use std::sync::Arc;
-use std::ops::Deref;
+use reqwest::Response;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
-use std::collections::HashMap;
+use std::ops::Deref;
+use std::sync::Arc;
 use thiserror::Error;
-use async_trait::async_trait;
-use reqwest::Response;
+use warp::reject::Reject;
 
 #[derive(Error, Debug)]
 pub enum RelayError {
     #[error("Failure happened during relay")]
-    RelayRequestError { source: Option<reqwest::Error> }
+    RelayRequestError { source: Option<reqwest::Error> },
 }
 
 impl Reject for RelayError {}
@@ -25,8 +25,8 @@ pub trait Relayer: Clone + Send + Sync {
 
 #[async_trait]
 impl<U> Relayer for Arc<U>
-    where
-        U: Relayer,
+where
+    U: Relayer,
 {
     async fn relay(&self, path: String, relay_url: String) -> Result<StatusCode, RelayError> {
         self.deref().relay(path, relay_url).await
@@ -43,9 +43,7 @@ pub struct MutualTLSRelayer {
 }
 
 impl MutualTLSRelayer {
-    pub fn new(
-        pem_file_path: String,
-    ) -> Result<MutualTLSRelayer, RelayError> {
+    pub fn new(pem_file_path: String) -> Result<MutualTLSRelayer, RelayError> {
         let mut buf = Vec::new();
         File::open(pem_file_path)
             .unwrap()
@@ -77,7 +75,9 @@ impl Relayer for MutualTLSRelayer {
             .await
             .and_then(|response| response.error_for_status())
             .and_then(|response| Ok(response.status()))
-            .map_err(|source| RelayError::RelayRequestError { source: Some(source) })
+            .map_err(|source| RelayError::RelayRequestError {
+                source: Some(source),
+            })
     }
 
     async fn get(&self, relay_url: String) -> Result<Response, RelayError> {
@@ -86,18 +86,20 @@ impl Relayer for MutualTLSRelayer {
             .send()
             .await
             .and_then(|response| response.error_for_status())
-            .map_err(|source| RelayError::RelayRequestError { source: Some(source) })
+            .map_err(|source| RelayError::RelayRequestError {
+                source: Some(source),
+            })
     }
 }
 
 #[cfg(test)]
 pub mod tests {
     use super::{RelayError, Relayer};
+    use async_trait::async_trait;
+    use http::StatusCode;
     use mockall::predicate::*;
     use mockall::*;
-    use http::StatusCode;
     use reqwest::Response;
-    use async_trait::async_trait;
 
     mock! {
     pub Relayer {}
@@ -111,5 +113,4 @@ pub mod tests {
         async fn get(&self, relay_url: String) -> Result<Response, RelayError>;
     }
     }
-
 }

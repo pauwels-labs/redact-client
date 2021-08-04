@@ -133,6 +133,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-recursion"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7d78656ba01f1b93024b7c3a0467f1608e4be67d725749fdcd7d2c7678fd7a2"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "async-session"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2145,8 +2156,9 @@ dependencies = [
 [[package]]
 name = "redact-crypto"
 version = "0.1.0"
-source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=5ea3f1e2a6d5d2cd364666497f126337a7c551a8#5ea3f1e2a6d5d2cd364666497f126337a7c551a8"
+source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=12b54f4cffe7019759152b06ef89afb4c807c9c9#12b54f4cffe7019759152b06ef89afb4c807c9c9"
 dependencies = [
+ "async-recursion",
  "async-trait",
  "base64 0.13.0",
  "futures",

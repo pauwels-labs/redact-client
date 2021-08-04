@@ -8,10 +8,7 @@ use crate::{
     },
     token::TokenGenerator,
 };
-use redact_crypto::{
-    Data, HasBuilder, HasByteSource, State, Storer, SymmetricKey, SymmetricSealer, ToState,
-    TypeBuilder,
-};
+use redact_crypto::{Data, Storer, SymmetricKey, ToEntry};
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use warp::{Filter, Rejection, Reply};
@@ -110,27 +107,16 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                 .get::<SymmetricKey>(".keys.encryption.default.")
                                 .await
                                 .map_err(CryptoErrorRejection)?;
-                            let key: SymmetricKey = storer
-                                .resolve(&key_entry.value)
+                            let key_algo = key_entry
+                                .to_byte_algorithm(None)
                                 .await
                                 .map_err(CryptoErrorRejection)?;
-                            let builder = TypeBuilder::Data(data.builder());
-                            let unsealable = key
-                                .take_seal(data.byte_source(), None, |key| {
-                                    key.to_ref_state(".keys.encryption.default.".to_owned())
-                                })
-                                .map_err(CryptoErrorRejection)?;
-
-                            storer
-                                .create(
-                                    body_params.path.clone(),
-                                    State::Sealed {
-                                        builder,
-                                        unsealable,
-                                    },
-                                )
+                            let data_clone = data.clone();
+                            let entry = data_clone
+                                .to_sealed_entry(body_params.path.clone(), key_algo)
                                 .await
                                 .map_err(CryptoErrorRejection)?;
+                            storer.create(entry).await.map_err(CryptoErrorRejection)?;
 
                             if let Some(relay_url) = body_params.relay_url.clone() {
                                 relayer

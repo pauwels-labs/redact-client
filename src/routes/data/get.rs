@@ -201,8 +201,8 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                 .map_err(CryptoErrorRejection)?;
 
                 let data = match data_entry {
-                    Some(data_entry) => storer
-                        .resolve::<Data>(&data_entry.value)
+                    Some(data_entry) => data_entry
+                        .take_resolve()
                         .await
                         .map_err(CryptoErrorRejection)?,
                     None => {

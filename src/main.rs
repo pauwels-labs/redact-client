@@ -1,21 +1,21 @@
 mod bootstrap;
 mod error;
 mod error_handler;
+mod relayer;
 mod render;
 mod routes;
 pub mod token;
-mod relayer;
 
 use crate::error_handler::handle_rejection;
+use crate::relayer::MutualTLSRelayer;
 use redact_config::Configurator;
-use redact_crypto::{RedactStorer, SecretAsymmetricKey, SymmetricKey};
+use redact_crypto::{Entry, RedactStorer, SecretAsymmetricKey, SymmetricKey};
 use render::HandlebarsRenderer;
 use serde::Serialize;
 use std::collections::HashMap;
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
-use crate::relayer::MutualTLSRelayer;
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -59,48 +59,25 @@ async fn main() {
     let render_engine = HandlebarsRenderer::new(template_mapping).unwrap();
 
     // Create a relay client which supports mutual TLS
-    let relayer = MutualTLSRelayer::new(config.get_str("certificate.filepath").unwrap())
-        .unwrap();
+    let relayer = MutualTLSRelayer::new(config.get_str("certificate.filepath").unwrap()).unwrap();
 
     // Get storage handle
     let storage_url = config.get_str("storage.url").unwrap();
 
     // Get the bootstrap key from config
     let storer = RedactStorer::new(&storage_url);
-    let user_akey: SecretAsymmetricKey =
+    let user_akey: Entry<SecretAsymmetricKey> =
         bootstrap::setup_entry(&config, "crypto.user.key", &storer)
             .await
             .unwrap();
-    let client_akey: SecretAsymmetricKey =
+    let client_akey: Entry<SecretAsymmetricKey> =
         bootstrap::setup_entry(&config, "crypto.client.key", &storer)
             .await
             .unwrap();
-    let default_skey: SymmetricKey =
+    let default_skey: Entry<SymmetricKey> =
         bootstrap::setup_entry(&config, "crypto.encryption.default", &storer)
             .await
             .unwrap();
-
-    // let default_sym_key_result = storer.get::<SymmetricKey>(".keys.default").await;
-    // let default_sym_key = match default_sym_key_result {
-    //     Ok(e) => storer.resolve::<SymmetricKey>(e.value).await,
-    //     Err(e) => match e {
-    //         _ => {
-    //             let key = SodiumOxideSymmetricKey::new();
-    //             let bytes = ByteSource::Vector(VectorByteSource::new(key.key.as_ref()));
-    //             let builder = key.builder().into();
-
-    //             storer
-    //                 .create(
-    //                     ".keys.default".to_owned(),
-    //                     States::Unsealed { builder, bytes },
-    //                 )
-    //                 .await
-    //                 .unwrap();
-    //             Ok(SymmetricKey::SodiumOxide(key))
-    //         }
-    //     },
-    // }
-    // .unwrap();
 
     // Create an in-memory session store
     let session_store = MemoryStore::new();
@@ -128,7 +105,7 @@ async fn main() {
             render_engine.clone(),
             token_generator.clone(),
             storer.clone(),
-            relayer.clone()
+            relayer.clone(),
         ))
         .with(secure_cors.clone());
     let get_routes = warp::get().and(
@@ -147,10 +124,8 @@ async fn main() {
         .with(secure_cors)),
     );
 
-    let proxy_routes = warp::any().and(
-        warp::post().and(
-            routes::proxy::post(relayer)
-        ))
+    let proxy_routes = warp::any()
+        .and(warp::post().and(routes::proxy::post(relayer)))
         .with(unsecure_cors_post.clone());
 
     let routes = health_route

@@ -1,15 +1,14 @@
+mod bootstrap;
+mod error;
 mod error_handler;
-pub mod render;
+mod render;
 mod routes;
 pub mod token;
 mod relayer;
 
 use crate::error_handler::handle_rejection;
 use redact_config::Configurator;
-use redact_crypto::{
-    key::sodiumoxide::SodiumOxideSymmetricKey, ByteSource, HasBuilder, RedactStorer, States,
-    Storer, SymmetricKey, VectorByteSource,
-};
+use redact_crypto::{RedactStorer, SecretAsymmetricKey, SymmetricKey};
 use render::HandlebarsRenderer;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -67,29 +66,41 @@ async fn main() {
     let storage_url = config.get_str("storage.url").unwrap();
 
     // Get the bootstrap key from config
-    //let bootstrap_identity: Key = config.get::<Key>("crypto.bootstrapidentity").unwrap();
     let storer = RedactStorer::new(&storage_url);
-    let default_sym_key_result = storer.get::<SymmetricKey>(".keys.default").await;
-    let default_sym_key = match default_sym_key_result {
-        Ok(e) => storer.resolve::<SymmetricKey>(e.value).await,
-        Err(e) => match e {
-            _ => {
-                let key = SodiumOxideSymmetricKey::new();
-                let bytes = ByteSource::Vector(VectorByteSource::new(key.key.as_ref()));
-                let builder = key.builder().into();
+    let user_akey: SecretAsymmetricKey =
+        bootstrap::setup_entry(&config, "crypto.user.key", &storer)
+            .await
+            .unwrap();
+    let client_akey: SecretAsymmetricKey =
+        bootstrap::setup_entry(&config, "crypto.client.key", &storer)
+            .await
+            .unwrap();
+    let default_skey: SymmetricKey =
+        bootstrap::setup_entry(&config, "crypto.encryption.default", &storer)
+            .await
+            .unwrap();
 
-                storer
-                    .create(
-                        ".keys.default".to_owned(),
-                        States::Unsealed { builder, bytes },
-                    )
-                    .await
-                    .unwrap();
-                Ok(SymmetricKey::SodiumOxide(key))
-            }
-        },
-    }
-    .unwrap();
+    // let default_sym_key_result = storer.get::<SymmetricKey>(".keys.default").await;
+    // let default_sym_key = match default_sym_key_result {
+    //     Ok(e) => storer.resolve::<SymmetricKey>(e.value).await,
+    //     Err(e) => match e {
+    //         _ => {
+    //             let key = SodiumOxideSymmetricKey::new();
+    //             let bytes = ByteSource::Vector(VectorByteSource::new(key.key.as_ref()));
+    //             let builder = key.builder().into();
+
+    //             storer
+    //                 .create(
+    //                     ".keys.default".to_owned(),
+    //                     States::Unsealed { builder, bytes },
+    //                 )
+    //                 .await
+    //                 .unwrap();
+    //             Ok(SymmetricKey::SodiumOxide(key))
+    //         }
+    //     },
+    // }
+    // .unwrap();
 
     // Create an in-memory session store
     let session_store = MemoryStore::new();

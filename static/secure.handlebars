@@ -9,9 +9,6 @@
     <form id="form" action="/data/{{ Secure.token }}?css={{ Secure.css }}&edit={{ Secure.edit }}{{ #if Secure.js_height_msg_prefix }}&js_height_msg_prefix={{ Secure.js_height_msg_prefix }}{{ /if }}{{ #if Secure.js_message }}&js_message={{ secure.js_message }}{{ /if }}{{ #if Secure.relay_url }}&relay_url={{ secure.relay_url }}{{ /if }}" method="POST">
       <input type="hidden" value="{{ Secure.path }}" id="path" name="path">
       {{ data_input Secure.data }}
-      {{! {{ #each Secure.key_names }\} }}
-      {{! <label class="checkbox-label"><input type="checkbox" class="checkbox" name="encryptedby" value="{{ this }\}">{{ this }\}</label><br/> }}
-      {{! {{ /each }\} }}
       <input type="submit" value="Submit" name="submit" id="submit">
     </form>
     {{ else }}

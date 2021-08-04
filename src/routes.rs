@@ -7,5 +7,4 @@ pub use data::post::submit_data;
 pub use error::{
     BadRequestRejection, CryptoErrorRejection, DataNotFoundRejection,
     IframeTokensDoNotMatchRejection, SerializationRejection, SessionTokenNotFoundRejection,
-    StorageErrorRejection,
 };

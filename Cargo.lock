@@ -3,6 +3,16 @@
 version = 3
 
 [[package]]
+name = "addr"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c54ccac949a2afafdfc889e15c753bbc6ee8783e026bbe3d057b00b13907db70"
+dependencies = [
+ "psl",
+ "psl-types",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1990,6 +2000,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "psl"
+version = "2.0.40"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f85e8f1c95be6100fcfc640a897f6849a9b40a039b62c4c6029fe2286b6421f1"
+dependencies = [
+ "psl-types",
+]
+
+[[package]]
+name = "psl-types"
+version = "2.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66b398073e7cdd6f05934389a8f5961e3aabfa66675b6f440df4e2c793d51a4f"
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2114,6 +2139,7 @@ dependencies = [
 name = "redact-client"
 version = "0.1.0"
 dependencies = [
+ "addr",
  "async-session 2.0.1",
  "async-trait",
  "base64 0.13.0",
@@ -2138,6 +2164,7 @@ dependencies = [
  "sodiumoxide",
  "thiserror",
  "tokio 1.8.1",
+ "url",
  "uuid",
  "warp",
  "warp-sessions",

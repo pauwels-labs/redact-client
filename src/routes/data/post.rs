@@ -8,11 +8,15 @@ use crate::{
     },
     token::TokenGenerator,
 };
-use redact_crypto::{Data, Storer, SymmetricKey, ToEntry};
+use redact_crypto::{Data, Storer, SymmetricKey, ToEntry, BinaryType, BinaryData};
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore};
+use futures::{future, StreamExt, TryFutureExt, TryStreamExt};
+use warp::filters::multipart::FormData;
+use bytes::buf::BufMut;
+use crate::error::ClientError;
 
 #[derive(Deserialize, Serialize)]
 struct SubmitDataPathParams {
@@ -124,6 +128,193 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                     .await
                                     .map_err(|_| warp::reject::custom(RelayRejection))?;
                             }
+
+                            Ok::<_, Rejection>((
+                                Rendered::new(
+                                    render_engine,
+                                    RenderTemplate {
+                                        name: "secure",
+                                        value: TemplateValues::Secure(SecureTemplateValues {
+                                            data: Some(data),
+                                            path: Some(body_params.path),
+                                            token: Some(token.clone()),
+                                            css: query_params.css,
+                                            edit: query_params.edit,
+                                            relay_url: body_params.relay_url,
+                                            js_message: body_params.js_message,
+                                        }),
+                                    },
+                                )?,
+                                path_params,
+                                token,
+                                session_with_store,
+                            ))
+                        }
+                    }
+                    None => Err(warp::reject::custom(SessionTokenNotFoundRejection)),
+                }
+            },
+        )
+        .untuple_one()
+        .and_then(
+            move |reply: Rendered,
+                  path_params: SubmitDataPathParams,
+                  token: String,
+                  mut session_with_store: SessionWithStore<S>| async move {
+                session_with_store.cookie_options.path =
+                    Some(format!("/data/{}", path_params.token.clone()));
+                session_with_store.session.destroy();
+
+                let mut new_session = SessionWithStore::<S> {
+                    session: Session::new(),
+                    session_store: session_with_store.session_store.clone(),
+                    cookie_options: CookieOptions {
+                        cookie_name: "sid",
+                        cookie_value: None,
+                        max_age: Some(60),
+                        domain: None,
+                        path: Some(format!("/data/{}", token.clone())),
+                        secure: false,
+                        http_only: true,
+                        same_site: Some(SameSiteCookieOption::None),
+                    },
+                };
+
+                new_session
+                    .session
+                    .insert("token", token)
+                    .map_err(SerializationRejection)?;
+                Ok::<_, Rejection>((
+                    warp_sessions::reply::with_session(reply, session_with_store).await?,
+                    new_session,
+                ))
+            },
+        )
+        .untuple_one()
+        .and_then(warp_sessions::reply::with_session)
+}
+
+
+pub fn submit_data_multipart<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q: Relayer>(
+    session_store: S,
+    render_engine: R,
+    token_generator: T,
+    storer: H,
+    relayer: Q,
+) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
+    warp::any()
+        .and(warp::path!("data" / String).map(|token| SubmitDataPathParams { token }))
+        .and(warp::query::<SubmitDataQueryParams>())
+        .and(
+            warp::filters::multipart::form()
+        )
+        .and(warp_sessions::request::with_session(
+            session_store,
+            Some(CookieOptions {
+                cookie_name: "sid",
+                cookie_value: None,
+                max_age: Some(60),
+                domain: None,
+                path: None,
+                secure: false,
+                http_only: true,
+                same_site: Some(SameSiteCookieOption::None),
+            }),
+        ))
+        .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
+        .and(warp::any().map(move || render_engine.clone()))
+        .and(warp::any().map(move || storer.clone()))
+        .and(warp::any().map(move || relayer.clone()))
+        .and_then(
+            move |path_params: SubmitDataPathParams,
+                  query_params: SubmitDataQueryParams,
+                  mut form: FormData,
+                  session_with_store: SessionWithStore<S>,
+                  token: String,
+                  render_engine: R,
+                  storer: H,
+                  relayer: Q| async move {
+                match session_with_store.session.get("token") {
+                    Some::<String>(session_token) => {
+                        if session_token != path_params.token {
+                            Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
+                        } else {
+                            let mut binary_type: BinaryType = BinaryType::ImageJPEG;
+                            let mut binary_data = BinaryData {
+                                binary_type: binary_type.clone(),
+                                binary: Vec::new()
+                            };
+                            let mut body_params_init = SubmitDataBodyParams {
+                                value: None,
+                                value_type: "binary".to_string(), // TODO: get rid of default
+                                path: "".to_string(),
+                                js_message: None,
+                                relay_url: None
+                            };
+
+                            // Collect the fields into (name, value): (String, Vec<u8>)
+                            let body_params: SubmitDataBodyParams = form
+                                .and_then(|part| {
+                                    let name = part.name().to_string();
+                                    if let Some(mime_type) = part.content_type() {
+                                        binary_type = BinaryType::try_from(mime_type)
+                                            .map_err(|e| ClientError::InternalError { source: Box::new(e) })
+                                            .unwrap();
+                                        binary_data.binary_type = binary_type.clone();
+                                    }
+                                    let value = part.stream().try_fold(Vec::new(), |mut vec, data| {
+                                        vec.put(data);
+                                        async move { Ok(vec) }
+                                    });
+                                    value.map_ok(move |vec| (name.to_string(), vec))
+                                })
+                                .try_fold(body_params_init, |mut acc, x| {
+                                    match x.0.as_str() {
+                                        "path" => {
+                                            acc.path = std::str::from_utf8(&x.1)
+                                                .map_err(|e| ClientError::InternalError {
+                                                    source: Box::new(e)
+                                                })
+                                                .unwrap()
+                                                .to_string();
+                                            },
+                                        "value" => {
+                                            acc.value = Some(base64::encode(&x.1));
+                                        },
+                                        //TODO: add value_Type
+                                        _ => {}
+                                    };
+                                    future::ready(Ok(acc))
+                                })
+                                .await
+                                .unwrap();
+
+                            let data = Data::try_from(body_params.clone())?;
+                            // let data2 = Data::Binary(Some())/
+
+
+                            let key_entry = storer
+                                .get::<SymmetricKey>(".keys.encryption.default.")
+                                .await
+                                .map_err(CryptoErrorRejection)?;
+                            let key_algo = key_entry
+                                .to_byte_algorithm(None)
+                                .await
+                                .map_err(CryptoErrorRejection)?;
+                            let data_clone = data.clone();
+                            let entry = data_clone
+                                .to_sealed_entry(body_params.path.clone(), key_algo)
+                                .await
+                                .map_err(CryptoErrorRejection)?;
+                            storer.create(entry).await.map_err(CryptoErrorRejection)?;
+
+                            if let Some(relay_url) = body_params.relay_url.clone() {
+                                relayer
+                                    .relay(body_params.path.clone(), relay_url)
+                                    .await
+                                    .map_err(|_| warp::reject::custom(RelayRejection))?;
+                            }
+
 
                             Ok::<_, Rejection>((
                                 Rendered::new(

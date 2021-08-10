@@ -142,6 +142,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                             relay_url: query_params.relay_url,
                                             js_message: query_params.js_message,
                                             js_height_msg_prefix: query_params.js_height_msg_prefix,
+                                            is_binary_data: false
                                         }),
                                     },
                                 )?,
@@ -307,6 +308,11 @@ pub fn submit_data_multipart<S: SessionStore, R: Renderer, T: TokenGenerator, H:
                                     .map_err(|_| warp::reject::custom(RelayRejection))?;
                             }
 
+                            let is_binary_data = match data {
+                                Data::Binary(_) => true,
+                                _ => query_params.data_type == Some("binary".to_owned())
+                            };
+
                             Ok::<_, Rejection>((
                                 Rendered::new(
                                     render_engine,
@@ -322,6 +328,7 @@ pub fn submit_data_multipart<S: SessionStore, R: Renderer, T: TokenGenerator, H:
                                             relay_url: query_params.relay_url,
                                             js_message: query_params.js_message,
                                             js_height_msg_prefix: query_params.js_height_msg_prefix,
+                                            is_binary_data: is_binary_data
                                         }),
                                     },
                                 )?,

@@ -1,7 +1,4 @@
-use handlebars::{
-    Context, Handlebars, Helper, Output, RenderContext, RenderError as HandlebarsRenderError,
-    TemplateError as HandlebarsTemplateError,
-};
+use handlebars::{Context, Handlebars, Helper, Output, RenderContext, RenderError as HandlebarsRenderError, TemplateError as HandlebarsTemplateError, HelperDef, HelperResult, Renderable};
 use redact_crypto::Data;
 use serde::{Serialize, Deserialize};
 use std::convert::From;
@@ -48,7 +45,8 @@ pub struct SecureTemplateValues {
     pub data_type: Option<String>,
     pub relay_url: Option<String>,
     pub js_message: Option<String>,
-    pub js_height_msg_prefix: Option<String>
+    pub js_height_msg_prefix: Option<String>,
+    pub is_binary_data: bool
 }
 
 impl From<HandlebarsTemplateError> for RenderError {
@@ -101,41 +99,13 @@ fn data_display(
     match value {
         Data::Binary(b) => {
             match b {
-                Some(binary) => out.write(&format!("<img src=\"data:{};base64, {}\"/>", binary.binary_type.to_string(), binary.binary)).map_err(|e| e.into()),
+                Some(binary) => out.write(&format!("<img id=\"data\" src=\"data:{};base64, {}\"/>", binary.binary_type.to_string(), binary.binary)).map_err(|e| e.into()),
                 None => out.write("").map_err(|e| e.into()),
             }
 
         },
         b => out.write(&format!("<p id=\"data\">{}</p>", &b.to_string())).map_err(|e| e.into())
     }
-}
-
-fn form_type(
-    h: &Helper,
-    _: &Handlebars,
-    _: &Context,
-    _: &mut RenderContext,
-    out: &mut dyn Output,
-) -> Result<(), HandlebarsRenderError> {
-
-    #[derive(Deserialize, Serialize)]
-    struct Obj {
-        data_type: String,
-    }
-    // get parameter from helper or throw an error
-    let data = h
-        .param(0)
-        .map(|v| v.value())
-        .ok_or(handlebars::RenderError::new("param not found"))?;
-
-    let data_type = data.as_str().unwrap_or_default();
-
-    if data_type == "binary" {
-        out.write("enctype=\"multipart/form-data\"").map_err(|e| e.into())
-    } else {
-        out.write("").map_err(|e| e.into())
-    }
-
 }
 
 fn data_input(
@@ -228,7 +198,6 @@ impl<'reg> HandlebarsRenderer<'reg> {
         }
         hbs.register_helper("data_input", Box::new(data_input));
         hbs.register_helper("data_display", Box::new(data_display));
-        hbs.register_helper("form_type", Box::new(form_type));
         Ok(HandlebarsRenderer { hbs: Arc::new(hbs) })
     }
 }

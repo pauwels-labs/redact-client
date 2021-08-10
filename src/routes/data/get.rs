@@ -225,6 +225,12 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                         }
                     }
                 };
+
+                let is_binary_data = match data {
+                    Data::Binary(_) => true,
+                    _ => query_params.data_type == Some("binary".to_owned())
+                };
+
                 let reply = Rendered::new(
                     render_engine,
                     RenderTemplate {
@@ -238,7 +244,8 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                             data_type: query_params.data_type,
                             relay_url: query_params.relay_url,
                             js_message: query_params.js_message,
-                            js_height_msg_prefix: query_params.js_height_msg_prefix
+                            js_height_msg_prefix: query_params.js_height_msg_prefix,
+                            is_binary_data: is_binary_data
                         }),
                     },
                 )?;

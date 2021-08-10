@@ -13,10 +13,9 @@ use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore};
-use futures::{future, StreamExt, TryFutureExt, TryStreamExt};
+use futures::{TryStreamExt};
 use warp::filters::multipart::FormData;
 use bytes::buf::BufMut;
-use crate::error::ClientError;
 
 #[derive(Deserialize, Serialize)]
 struct SubmitDataPathParams {
@@ -55,6 +54,7 @@ impl TryFrom<SubmitDataBodyParams> for Data {
 struct SubmitDataQueryParams {
     css: Option<String>,
     edit: Option<bool>,
+    data_type: Option<String>,
     index: Option<i64>,
     fetch_id: Option<String>,
 }
@@ -140,6 +140,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                             token: Some(token.clone()),
                                             css: query_params.css,
                                             edit: query_params.edit,
+                                            data_type: query_params.data_type,
                                             relay_url: body_params.relay_url,
                                             js_message: body_params.js_message,
                                         }),
@@ -228,7 +229,7 @@ pub fn submit_data_multipart<S: SessionStore, R: Renderer, T: TokenGenerator, H:
         .and_then(
             move |path_params: SubmitDataPathParams,
                   query_params: SubmitDataQueryParams,
-                  mut form: FormData,
+                  form: FormData,
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R,
@@ -239,58 +240,49 @@ pub fn submit_data_multipart<S: SessionStore, R: Renderer, T: TokenGenerator, H:
                         if session_token != path_params.token {
                             Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
                         } else {
-                            let mut binary_type: BinaryType = BinaryType::ImageJPEG;
-                            let mut binary_data = BinaryData {
-                                binary_type: binary_type.clone(),
-                                binary: Vec::new()
-                            };
-                            let mut body_params_init = SubmitDataBodyParams {
-                                value: None,
-                                value_type: "binary".to_string(), // TODO: get rid of default
-                                path: "".to_string(),
-                                js_message: None,
-                                relay_url: None
-                            };
+                            let binary_type: Option<BinaryType> = None;
+                            let binary_data: Option<String> = None;
+                            let path: Option<String> = None;
+                            let (binary_type, binary_data, path): (Option<BinaryType>, Option<String>, Option<String>) = form
+                                .try_fold((binary_type, binary_data, path), |(mut bt, mut bd, mut p), x| async move {
+                                    let field_name = x.name().to_owned();
+                                    let content_type = x.content_type();
 
-                            // Collect the fields into (name, value): (String, Vec<u8>)
-                            let body_params: SubmitDataBodyParams = form
-                                .and_then(|part| {
-                                    let name = part.name().to_string();
-                                    if let Some(mime_type) = part.content_type() {
-                                        binary_type = BinaryType::try_from(mime_type)
-                                            .map_err(|e| ClientError::InternalError { source: Box::new(e) })
-                                            .unwrap();
-                                        binary_data.binary_type = binary_type.clone();
-                                    }
-                                    let value = part.stream().try_fold(Vec::new(), |mut vec, data| {
-                                        vec.put(data);
-                                        async move { Ok(vec) }
-                                    });
-                                    value.map_ok(move |vec| (name.to_string(), vec))
-                                })
-                                .try_fold(body_params_init, |mut acc, x| {
-                                    match x.0.as_str() {
-                                        "path" => {
-                                            acc.path = std::str::from_utf8(&x.1)
-                                                .map_err(|e| ClientError::InternalError {
-                                                    source: Box::new(e)
-                                                })
+                                    if field_name == "path" {
+                                        let data = x.stream()
+                                            .try_fold(Vec::new(), |mut vec, data| {
+                                                vec.put(data);
+                                                async move { Ok(vec) }
+                                            })
+                                            .await?;
+
+                                        p = Some(std::str::from_utf8(&data)
+                                            .unwrap()
+                                            .to_string());
+                                    } else if field_name == "value" {
+                                        bt = Some (
+                                            BinaryType::try_from(content_type.unwrap_or_default())
                                                 .unwrap()
-                                                .to_string();
-                                            },
-                                        "value" => {
-                                            acc.value = Some(base64::encode(&x.1));
-                                        },
-                                        //TODO: add value_Type
-                                        _ => {}
-                                    };
-                                    future::ready(Ok(acc))
+                                        );
+                                        let data = x.stream()
+                                            .try_fold(Vec::new(), |mut vec, data| {
+                                                vec.put(data);
+                                                async move { Ok(vec) }
+                                            })
+                                            .await?;
+                                        bd = Some(base64::encode(data));
+                                    }
+                                    Ok((bt, bd, p))
                                 })
                                 .await
-                                .unwrap();
+                                .map_err(|_| warp::reject::custom(BadRequestRejection))?;
 
-                            let data = Data::try_from(body_params.clone())?;
-                            // let data2 = Data::Binary(Some())/
+                            let bd = BinaryData {
+                                binary: binary_data.ok_or_else(|| warp::reject::custom(BadRequestRejection))?,
+                                binary_type: binary_type.ok_or_else(|| warp::reject::custom(BadRequestRejection))?
+                            };
+                            let data = Data::Binary(Some(bd));
+                            let path_res = path.ok_or_else(|| warp::reject::custom(BadRequestRejection))?;
 
 
                             let key_entry = storer
@@ -303,18 +295,18 @@ pub fn submit_data_multipart<S: SessionStore, R: Renderer, T: TokenGenerator, H:
                                 .map_err(CryptoErrorRejection)?;
                             let data_clone = data.clone();
                             let entry = data_clone
-                                .to_sealed_entry(body_params.path.clone(), key_algo)
+                                .to_sealed_entry(path_res.clone(), key_algo)
                                 .await
                                 .map_err(CryptoErrorRejection)?;
                             storer.create(entry).await.map_err(CryptoErrorRejection)?;
 
-                            if let Some(relay_url) = body_params.relay_url.clone() {
+                            let relay = Some("https://redact-feed-api.dev.pauwelslabs.com/redact/relay".to_owned());
+                            if let Some(relay_url) = relay {
                                 relayer
-                                    .relay(body_params.path.clone(), relay_url)
+                                    .relay(path_res.clone(), relay_url)
                                     .await
                                     .map_err(|_| warp::reject::custom(RelayRejection))?;
                             }
-
 
                             Ok::<_, Rejection>((
                                 Rendered::new(
@@ -323,12 +315,13 @@ pub fn submit_data_multipart<S: SessionStore, R: Renderer, T: TokenGenerator, H:
                                         name: "secure",
                                         value: TemplateValues::Secure(SecureTemplateValues {
                                             data: Some(data),
-                                            path: Some(body_params.path),
+                                            path: Some(path_res),
                                             token: Some(token.clone()),
                                             css: query_params.css,
                                             edit: query_params.edit,
-                                            relay_url: body_params.relay_url,
-                                            js_message: body_params.js_message,
+                                            data_type: query_params.data_type,
+                                            relay_url: None, //TODO: fix
+                                            js_message: None //TODO: fix
                                         }),
                                     },
                                 )?,

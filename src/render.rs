@@ -3,7 +3,7 @@ use handlebars::{
     TemplateError as HandlebarsTemplateError,
 };
 use redact_crypto::Data;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use std::convert::From;
 use std::ops::Deref;
 use std::{collections::HashMap, sync::Arc};
@@ -44,6 +44,7 @@ pub struct SecureTemplateValues {
     pub token: Option<String>,
     pub css: Option<String>,
     pub edit: Option<bool>,
+    pub data_type: Option<String>,
     pub relay_url: Option<String>,
     pub js_message: Option<String>,
 }
@@ -95,7 +96,44 @@ fn data_display(
             serde_json::value::from_value(data.value().to_owned()).map_err(|e| e.into())
         })?;
 
-    out.write(&value.to_string()).map_err(|e| e.into())
+    match value {
+        Data::Binary(b) => {
+            match b {
+                Some(binary) => out.write(&format!("<img src=\"data:{};base64, {}\"/>", binary.binary_type.to_string(), binary.binary)).map_err(|e| e.into()),
+                None => out.write("").map_err(|e| e.into()),
+            }
+
+        },
+        b => out.write(&format!("<p>{}</p>", &b.to_string())).map_err(|e| e.into())
+    }
+}
+
+fn form_type(
+    h: &Helper,
+    _: &Handlebars,
+    _: &Context,
+    _: &mut RenderContext,
+    out: &mut dyn Output,
+) -> Result<(), HandlebarsRenderError> {
+
+    #[derive(Deserialize, Serialize)]
+    struct Obj {
+        data_type: String,
+    }
+    // get parameter from helper or throw an error
+    let data = h
+        .param(0)
+        .map(|v| v.value())
+        .ok_or(handlebars::RenderError::new("param not found"))?;
+
+    let data_type = data.as_str().unwrap_or_default();
+
+    if data_type == "binary" {
+        out.write("enctype=\"multipart/form-data\"").map_err(|e| e.into())
+    } else {
+        out.write("").map_err(|e| e.into())
+    }
+
 }
 
 fn data_input(
@@ -152,7 +190,7 @@ fn data_input(
                 s
             ))
         }
-        Data::Binary(b) => {
+        Data::Binary(_) => {
             out.write("<input type=\"hidden\" name=\"value_type\" value=\"binary\">")?;
             out.write("<input type=\"file\" class=\"file\" name=\"value\" autofocus>")
         }
@@ -188,6 +226,7 @@ impl<'reg> HandlebarsRenderer<'reg> {
         }
         hbs.register_helper("data_input", Box::new(data_input));
         hbs.register_helper("data_display", Box::new(data_display));
+        hbs.register_helper("form_type", Box::new(form_type));
         Ok(HandlebarsRenderer { hbs: Arc::new(hbs) })
     }
 }

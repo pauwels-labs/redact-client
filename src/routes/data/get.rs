@@ -206,12 +206,13 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                         .await
                         .map_err(CryptoErrorRejection)?,
                     None => {
-                        if let Some(data_type) = query_params.data_type {
+                        if let Some(data_type) = query_params.data_type.clone() {
                             match data_type.to_ascii_lowercase().as_ref() {
                                 "bool" => Data::Bool(false),
                                 "u64" => Data::U64(0),
                                 "i64" => Data::I64(0),
                                 "f64" => Data::F64(0.0),
+                                "binary" => Data::Binary(None),
                                 _ => Data::String("".to_owned()),
                             }
                         } else {
@@ -229,6 +230,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                             token: Some(token.clone()),
                             css: query_params.css,
                             edit: query_params.edit,
+                            data_type: query_params.data_type,
                             relay_url: query_params.relay_url,
                             js_message: query_params.js_message,
                         }),

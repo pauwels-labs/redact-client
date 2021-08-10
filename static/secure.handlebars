@@ -6,7 +6,7 @@
   </head>
   <body>
     {{ #if Secure.edit }}
-    <form id="form" action="/data/{{ Secure.token }}?css={{ Secure.css }}&edit={{ Secure.edit }}" method="POST">
+    <form id="form" action="/data/{{ Secure.token }}?css={{ Secure.css }}&edit={{ Secure.edit }}&data_type={{ Secure.data_type }}" method="POST" {{ form_type Secure.data_type }}>
       {{ #if Secure.relay_url }}
       <input type="hidden" value="{{ Secure.relay_url }}" id="relay_url" name="relay_url">
       {{ /if }}
@@ -18,43 +18,63 @@
       <input type="submit" value="Submit" name="submit" id="submit">
     </form>
     {{ else }}
-      <p>
         {{ data_display Secure.data }}
-      </p>
     {{ /if }}
 
 
 	<script>
 	{{ #if Secure.js_message }}
 	  {{ #if Secure.edit }}
-      document.getElementById("form").addEventListener('submit', functSubmit);
-      function functSubmit(event) {
-		const formTarget = event.target;
-		var form = new FormData(formTarget);
+		document.getElementById("form").addEventListener('submit', functSubmit);
 
-		var formBody = [];
-		for (let [name, value] of form) {
-		  var encodedKey = encodeURIComponent(name);
-		  var encodedValue = encodeURIComponent(value);
-		  formBody.push(encodedKey + "=" + encodedValue);
-		}
-		formBody = formBody.join("&");
+		{{#if (eq "binary" Secure.data_type)}}
+			document.getElementById("form").enctype = 'multipart/form-data';
+			function functSubmit(event) {
+				const formTarget = event.target;
+				var form = new FormData(formTarget);
+				fetch(formTarget.action, {
+					method: formTarget.method,
+					body: form
+				})
+				.then((res) => {
+				  window.parent.postMessage("{{ Secure.js_message }}", "*");
+				  return res.text();
+				});
+				// Prevent the default form submit
+				event.preventDefault();
+			  }
+		{{ else }}
+		  function functSubmit(event) {
+			const formTarget = event.target;
+			var form = new FormData(formTarget);
 
-		fetch(formTarget.action, {
-		  method: formTarget.method,
-		  headers: {
-    		'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
-  		  },
-  		  body: formBody
-		})
-		.then((res) => {
-		  	window.parent.postMessage("{{ Secure.js_message }}", "*");
-		  return res.text();
-		});
+			for(const name in data) {
+				form.append(name, data[name]);
+			}
+			var formBody = [];
+			for (let [name, value] of form) {
+			  var encodedKey = encodeURIComponent(name);
+			  var encodedValue = encodeURIComponent(value);
+			  formBody.push(encodedKey + "=" + encodedValue);
+			}
+			formBody = formBody.join("&");
 
-		// Prevent the default form submit
-		event.preventDefault();
-	  }
+			fetch(formTarget.action, {
+			  method: formTarget.method,
+			  headers: {
+				'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+			  },
+			  body: formBody
+			})
+			.then((res) => {
+				window.parent.postMessage("{{ Secure.js_message }}", "*");
+			  return res.text();
+			});
+
+			// Prevent the default form submit
+			event.preventDefault();
+		  }
+		{{/if}}
 	  {{/if}}
 	{{/if}}
 

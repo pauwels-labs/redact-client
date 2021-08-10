@@ -107,6 +107,14 @@ async fn main() {
             storer.clone(),
             relayer.clone(),
         ))
+        .with(secure_cors.clone())
+        .or(routes::data::post::submit_data_multipart(
+            session_store.clone(),
+            render_engine.clone(),
+            token_generator.clone(),
+            storer.clone(),
+            relayer.clone(),
+        ))
         .with(secure_cors.clone());
     let get_routes = warp::get().and(
         routes::data::get::with_token(

@@ -26,9 +26,7 @@ struct SubmitDataPathParams {
 struct SubmitDataBodyParams {
     path: String,
     value: Option<String>,
-    value_type: String,
-    relay_url: Option<String>,
-    js_message: Option<String>,
+    value_type: String
 }
 
 impl TryFrom<SubmitDataBodyParams> for Data {
@@ -54,8 +52,9 @@ impl TryFrom<SubmitDataBodyParams> for Data {
 struct SubmitDataQueryParams {
     css: Option<String>,
     edit: Option<bool>,
-    index: Option<i64>,
-    fetch_id: Option<String>,
+    relay_url: Option<String>,
+    js_message: Option<String>,
+    js_height_msg_prefix: Option<String>,
 }
 
 pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q: Relayer>(
@@ -132,11 +131,10 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                 .await
                                 .map_err(CryptoErrorRejection)?;
 
-                            if let Some(relay_url) = body_params.relay_url.clone() {
-                                relayer
-                                    .relay(body_params.path.clone(), relay_url)
-                                    .await
-                                    .map_err(|_| warp::reject::custom(RelayRejection))?;
+                            if let Some(relay_url) = query_params.relay_url.clone() {
+                                relayer.relay(body_params.path.clone(), relay_url)
+                                .await
+                                .map_err(|_| warp::reject::custom(RelayRejection))?;
                             }
 
                             Ok::<_, Rejection>((
@@ -150,8 +148,9 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                             token: Some(token.clone()),
                                             css: query_params.css,
                                             edit: query_params.edit,
-                                            relay_url: body_params.relay_url,
-                                            js_message: body_params.js_message,
+                                            relay_url: query_params.relay_url,
+                                            js_message: query_params.js_message,
+                                            js_height_msg_prefix: query_params.js_height_msg_prefix,
                                         }),
                                     },
                                 )?,
@@ -463,11 +462,14 @@ mod tests {
 
         let res = warp::test::request()
             .method("POST")
-            .path("/data/E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D")
+            .path(&format!(
+                "/data/E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D?relay_url={}&js_message={}",
+                relay_url, js_message
+            ))
             .header("cookie", "sid=testSID")
             .body(format!(
-                "relay_url={}&path={}&js_message={}&value_type=string&value=qew&submit=Submit",
-                relay_url, data_path, js_message
+                "value_type=string&value=qew&submit=Submit&path={}",
+                data_path
             ))
             .reply(&submit_data)
             .await;

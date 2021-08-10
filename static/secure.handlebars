@@ -6,25 +6,26 @@
   </head>
   <body>
     {{ #if Secure.edit }}
-    <form id="form" action="/data/{{ Secure.token }}?css={{ Secure.css }}&edit={{ Secure.edit }}" method="POST">
-      {{ #if Secure.relay_url }}
-      <input type="hidden" value="{{ Secure.relay_url }}" id="relay_url" name="relay_url">
-      {{ /if }}
-	  {{ #if Secure.js_message }}
-	  <input type="hidden" value="{{ Secure.js_message }}" id="js_message" name="js_message">
-	  {{ /if }}
+    <form id="form" action="/data/{{ Secure.token }}?css={{ Secure.css }}&edit={{ Secure.edit }}{{ #if Secure.js_height_msg_prefix }}&js_height_msg_prefix={{ Secure.js_height_msg_prefix }}{{ /if }}{{ #if Secure.js_message }}&js_message={{ Secure.js_message }}{{ /if }}{{ #if Secure.relay_url }}&relay_url={{ Secure.relay_url }}{{ /if }}" method="POST">
       <input type="hidden" value="{{ Secure.path }}" id="path" name="path">
       {{ data_input Secure.data }}
       <input type="submit" value="Submit" name="submit" id="submit">
     </form>
     {{ else }}
-      <p>
+      <p id="data">
         {{ data_display Secure.data }}
       </p>
     {{ /if }}
 
 
 	<script>
+	{{ #if Secure.js_height_msg_prefix }}
+		var clientHeight = document.getElementById('data').clientHeight;
+		var message = atob("{{ Secure.js_height_msg_prefix }}") + clientHeight;
+		window.parent.postMessage(btoa(message), "*");
+	{{/if}}
+
+
 	{{ #if Secure.js_message }}
 	  {{ #if Secure.edit }}
       document.getElementById("form").addEventListener('submit', functSubmit);

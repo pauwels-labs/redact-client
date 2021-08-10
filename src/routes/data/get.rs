@@ -30,11 +30,13 @@ struct WithoutTokenQueryParams {
     data_type: Option<String>,
     relay_url: Option<String>,
     js_message: Option<String>,
+    js_height_msg_prefix: Option<String>
 }
 
 impl Validate for WithoutTokenQueryParams {
     fn validate(&self) -> Result<(), Rejection> {
         validate_base64_query_param(self.js_message.clone())?;
+        validate_base64_query_param(self.js_height_msg_prefix.clone())?;
         Ok::<_, Rejection>(())
     }
 }
@@ -51,11 +53,13 @@ struct WithTokenQueryParams {
     data_type: Option<String>,
     relay_url: Option<String>,
     js_message: Option<String>,
+    js_height_msg_prefix: Option<String>
 }
 
 impl Validate for WithTokenQueryParams {
     fn validate(&self) -> Result<(), Rejection> {
         validate_base64_query_param(self.js_message.clone())?;
+        validate_base64_query_param(self.js_height_msg_prefix.clone())?;
         Ok::<_, Rejection>(())
     }
 }
@@ -110,6 +114,7 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                     edit: query_params.edit,
                     data_type: query_params.data_type,
                     relay_url: query_params.relay_url,
+                    js_height_msg_prefix: query_params.js_height_msg_prefix,
                     js_message: query_params.js_message,
                 };
                 Ok::<_, Rejection>((
@@ -231,6 +236,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                             edit: query_params.edit,
                             relay_url: query_params.relay_url,
                             js_message: query_params.js_message,
+                            js_height_msg_prefix: query_params.js_height_msg_prefix
                         }),
                     },
                 )?;
@@ -438,6 +444,7 @@ mod tests {
                         edit: None,
                         relay_url: None,
                         js_message: None,
+                        js_height_msg_prefix: None,
                     });
                     template.value == expected_value
                 })
@@ -584,6 +591,7 @@ mod tests {
                         data_type: None,
                         relay_url: None,
                         js_message: None,
+                        js_height_msg_prefix: None,
                     });
 
                     template.value == expected_value
@@ -631,6 +639,7 @@ mod tests {
                         data_type: None,
                         relay_url: None,
                         js_message: None,
+                        js_height_msg_prefix: None,
                     });
 
                     template.value == expected_value
@@ -678,6 +687,7 @@ mod tests {
                         data_type: None,
                         relay_url: None,
                         js_message: None,
+                        js_height_msg_prefix: None,
                     });
                     template.value == expected_value
                 })
@@ -724,6 +734,7 @@ mod tests {
                         data_type: None,
                         relay_url: None,
                         js_message: None,
+                        js_height_msg_prefix: None,
                     });
                     template.value == expected_value
                 })
@@ -772,6 +783,7 @@ mod tests {
                         data_type: None,
                         relay_url: None,
                         js_message: Some(js_message.to_owned()),
+                        js_height_msg_prefix: None,
                     });
                     template.value == expected_value
                 })
@@ -827,6 +839,34 @@ mod tests {
                     "/data/.testKey.?edit=false&js_message={}",
                     js_message
                 ))
+                .reply(&without_token_filter)
+                .await;
+            assert_eq!(res.status(), 500);
+        }
+
+        #[tokio::test]
+        async fn test_without_token_with_js_height_msg_prefix_invalid() {
+            let js_height_msg_prefix = "invalid%5C%22%29%3B+mesaage%7D%7B";
+
+            let session_store = MemoryStore::new();
+            let mut render_engine = MockRenderer::new();
+            render_engine
+                .expect_render()
+                .times(0);
+
+            let mut token_generator = MockTokenGenerator::new();
+            token_generator
+                .expect_generate_token()
+                .times(0);
+
+            let without_token_filter = get::without_token(
+                session_store,
+                Arc::new(render_engine),
+                Arc::new(token_generator),
+            );
+
+            let res = warp::test::request()
+                .path(&format!("/data/.testKey.?edit=false&js_height_msg_prefix={}", js_height_msg_prefix))
                 .reply(&without_token_filter)
                 .await;
             assert_eq!(res.status(), 500);

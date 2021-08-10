@@ -35,6 +35,7 @@ pub struct UnsecureTemplateValues {
     pub data_type: Option<String>,
     pub relay_url: Option<String>,
     pub js_message: Option<String>,
+    pub js_height_msg_prefix: Option<String>
 }
 
 #[derive(Serialize, Debug, Default, PartialEq)]
@@ -47,6 +48,7 @@ pub struct SecureTemplateValues {
     pub data_type: Option<String>,
     pub relay_url: Option<String>,
     pub js_message: Option<String>,
+    pub js_height_msg_prefix: Option<String>
 }
 
 impl From<HandlebarsTemplateError> for RenderError {
@@ -104,7 +106,7 @@ fn data_display(
             }
 
         },
-        b => out.write(&format!("<p>{}</p>", &b.to_string())).map_err(|e| e.into())
+        b => out.write(&format!("<p id=\"data\">{}</p>", &b.to_string())).map_err(|e| e.into())
     }
 }
 

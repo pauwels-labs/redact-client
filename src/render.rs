@@ -1,6 +1,6 @@
-use handlebars::{Context, Handlebars, Helper, Output, RenderContext, RenderError as HandlebarsRenderError, TemplateError as HandlebarsTemplateError, HelperDef, HelperResult, Renderable};
+use handlebars::{Context, Handlebars, Helper, Output, RenderContext, RenderError as HandlebarsRenderError, TemplateError as HandlebarsTemplateError};
 use redact_crypto::Data;
-use serde::{Serialize, Deserialize};
+use serde::{Serialize};
 use std::convert::From;
 use std::ops::Deref;
 use std::{collections::HashMap, sync::Arc};

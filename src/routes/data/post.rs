@@ -10,9 +10,9 @@ use crate::{
 };
 use redact_crypto::{Data, Storer, SymmetricKey, ToEntry, BinaryType, BinaryData};
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
+use std::convert::{TryFrom};
 use warp::{Filter, Rejection, Reply};
-use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore};
+use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore, WithSession};
 use futures::{TryStreamExt};
 use warp::filters::multipart::FormData;
 use bytes::buf::BufMut;
@@ -68,12 +68,59 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
     warp::any()
         .and(warp::path!("data" / String).map(|token| SubmitDataPathParams { token }))
         .and(warp::query::<SubmitDataQueryParams>())
-        .and(
-            warp::filters::body::form::<SubmitDataBodyParams>().and_then(
-                move |body: SubmitDataBodyParams| async {
-                    Ok::<_, Rejection>((body.clone(), Data::try_from(body)?))
-                },
-            ),
+        .and(warp::filters::body::form::<SubmitDataBodyParams>()
+            .and_then(move |body: SubmitDataBodyParams| async {
+                let path = body.path.clone();
+                Ok::<_, Rejection>((Data::try_from(body)?, path))
+            },)
+            .or(warp::filters::multipart::form()
+                .and_then(move |form: FormData| async {
+                    let binary_type: Option<BinaryType> = None;
+                    let binary_data: Option<String> = None;
+                    let path: Option<String> = None;
+
+                    let (binary_type, binary_data, path): (Option<BinaryType>, Option<String>, Option<String>) = form
+                        .try_fold((binary_type, binary_data, path), |(mut bt, mut bd, mut p), x| async move {
+                            let field_name = x.name().to_owned();
+                            let content_type = x.content_type();
+
+                            if field_name == "path" {
+                                let data = x.stream()
+                                    .try_fold(Vec::new(), |mut vec, data| {
+                                        vec.put(data);
+                                        async move { Ok(vec) }
+                                    })
+                                    .await?;
+
+                                p = Some(std::str::from_utf8(&data)
+                                    .unwrap()
+                                    .to_string());
+                            } else if field_name == "value" {
+                                bt = Some(
+                                    BinaryType::try_from(content_type.unwrap_or_default())
+                                        .unwrap()
+                                );
+                                let data = x.stream()
+                                    .try_fold(Vec::new(), |mut vec, data| {
+                                        vec.put(data);
+                                        async move { Ok(vec) }
+                                    })
+                                    .await?;
+                                bd = Some(base64::encode(data));
+                            }
+                            Ok((bt, bd, p))
+                        })
+                        .await
+                        .map_err(|_| warp::reject::custom(BadRequestRejection))?;
+
+                    let bd = BinaryData {
+                        binary: binary_data.ok_or_else(|| warp::reject::custom(BadRequestRejection))?,
+                        binary_type: binary_type.ok_or_else(|| warp::reject::custom(BadRequestRejection))?
+                    };
+                    Ok::<_, Rejection>((Data::Binary(Some(bd)), path.unwrap()))
+                })
+            )
+            .unify()
         )
         .and(warp_sessions::request::with_session(
             session_store,
@@ -95,7 +142,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
         .and_then(
             move |path_params: SubmitDataPathParams,
                   query_params: SubmitDataQueryParams,
-                  (body_params, data): (SubmitDataBodyParams, Data),
+                  (data, path): (Data, String),
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R,
@@ -116,15 +163,15 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                 .map_err(CryptoErrorRejection)?;
                             let data_clone = data.clone();
                             let entry = data_clone
-                                .to_sealed_entry(body_params.path.clone(), key_algo)
+                                .to_sealed_entry(path.clone(), key_algo)
                                 .await
                                 .map_err(CryptoErrorRejection)?;
                             storer.create(entry).await.map_err(CryptoErrorRejection)?;
 
                             if let Some(relay_url) = query_params.relay_url.clone() {
-                                relayer.relay(body_params.path.clone(), relay_url)
-                                .await
-                                .map_err(|_| warp::reject::custom(RelayRejection))?;
+                                relayer.relay(path.clone(), relay_url)
+                                    .await
+                                    .map_err(|_| warp::reject::custom(RelayRejection))?;
                             }
 
                             Ok::<_, Rejection>((
@@ -134,7 +181,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                         name: "secure",
                                         value: TemplateValues::Secure(SecureTemplateValues {
                                             data: Some(data),
-                                            path: Some(body_params.path),
+                                            path: Some(path.clone()),
                                             token: Some(token.clone()),
                                             css: query_params.css,
                                             edit: query_params.edit,
@@ -151,234 +198,50 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                 session_with_store,
                             ))
                         }
-                    }
-                    None => Err(warp::reject::custom(SessionTokenNotFoundRejection)),
+                    },
+                    None => Err(warp::reject::custom(SessionTokenNotFoundRejection))
                 }
-            },
+            }
         )
         .untuple_one()
-        .and_then(
-            move |reply: Rendered,
-                  path_params: SubmitDataPathParams,
-                  token: String,
-                  mut session_with_store: SessionWithStore<S>| async move {
-                session_with_store.cookie_options.path =
-                    Some(format!("/data/{}", path_params.token.clone()));
-                session_with_store.session.destroy();
-
-                let mut new_session = SessionWithStore::<S> {
-                    session: Session::new(),
-                    session_store: session_with_store.session_store.clone(),
-                    cookie_options: CookieOptions {
-                        cookie_name: "sid",
-                        cookie_value: None,
-                        max_age: Some(60),
-                        domain: None,
-                        path: Some(format!("/data/{}", token.clone())),
-                        secure: false,
-                        http_only: true,
-                        same_site: Some(SameSiteCookieOption::None),
-                    },
-                };
-
-                new_session
-                    .session
-                    .insert("token", token)
-                    .map_err(SerializationRejection)?;
-                Ok::<_, Rejection>((
-                    warp_sessions::reply::with_session(reply, session_with_store).await?,
-                    new_session,
-                ))
-            },
-        )
+        .and_then(build_session)
         .untuple_one()
         .and_then(warp_sessions::reply::with_session)
 }
 
+async fn build_session<T: Reply, S: SessionStore>(
+    reply: T,
+    path_params: SubmitDataPathParams,
+    token: String,
+    mut session_with_store: SessionWithStore<S>
+) -> Result<(WithSession<T>, SessionWithStore<S>), Rejection> {
+    session_with_store.cookie_options.path =
+        Some(format!("/data/{}", path_params.token.clone()));
+    session_with_store.session.destroy();
 
-pub fn submit_data_multipart<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q: Relayer>(
-    session_store: S,
-    render_engine: R,
-    token_generator: T,
-    storer: H,
-    relayer: Q,
-) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
-    warp::any()
-        .and(warp::path!("data" / String).map(|token| SubmitDataPathParams { token }))
-        .and(warp::query::<SubmitDataQueryParams>())
-        .and(
-            warp::filters::multipart::form()
-        )
-        .and(warp_sessions::request::with_session(
-            session_store,
-            Some(CookieOptions {
-                cookie_name: "sid",
-                cookie_value: None,
-                max_age: Some(60),
-                domain: None,
-                path: None,
-                secure: false,
-                http_only: true,
-                same_site: Some(SameSiteCookieOption::None),
-            }),
-        ))
-        .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
-        .and(warp::any().map(move || render_engine.clone()))
-        .and(warp::any().map(move || storer.clone()))
-        .and(warp::any().map(move || relayer.clone()))
-        .and_then(
-            move |path_params: SubmitDataPathParams,
-                  query_params: SubmitDataQueryParams,
-                  form: FormData,
-                  session_with_store: SessionWithStore<S>,
-                  token: String,
-                  render_engine: R,
-                  storer: H,
-                  relayer: Q| async move {
-                match session_with_store.session.get("token") {
-                    Some::<String>(session_token) => {
-                        if session_token != path_params.token {
-                            Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
-                        } else {
-                            let binary_type: Option<BinaryType> = None;
-                            let binary_data: Option<String> = None;
-                            let path: Option<String> = None;
-                            let (binary_type, binary_data, path): (Option<BinaryType>, Option<String>, Option<String>) = form
-                                .try_fold((binary_type, binary_data, path), |(mut bt, mut bd, mut p), x| async move {
-                                    let field_name = x.name().to_owned();
-                                    let content_type = x.content_type();
+    let mut new_session = SessionWithStore::<S> {
+        session: Session::new(),
+        session_store: session_with_store.session_store.clone(),
+        cookie_options: CookieOptions {
+            cookie_name: "sid",
+            cookie_value: None,
+            max_age: Some(60),
+            domain: None,
+            path: Some(format!("/data/{}", token.clone())),
+            secure: false,
+            http_only: true,
+            same_site: Some(SameSiteCookieOption::None),
+        },
+    };
 
-                                    if field_name == "path" {
-                                        let data = x.stream()
-                                            .try_fold(Vec::new(), |mut vec, data| {
-                                                vec.put(data);
-                                                async move { Ok(vec) }
-                                            })
-                                            .await?;
-
-                                        p = Some(std::str::from_utf8(&data)
-                                            .unwrap()
-                                            .to_string());
-                                    } else if field_name == "value" {
-                                        bt = Some (
-                                            BinaryType::try_from(content_type.unwrap_or_default())
-                                                .unwrap()
-                                        );
-                                        let data = x.stream()
-                                            .try_fold(Vec::new(), |mut vec, data| {
-                                                vec.put(data);
-                                                async move { Ok(vec) }
-                                            })
-                                            .await?;
-                                        bd = Some(base64::encode(data));
-                                    }
-                                    Ok((bt, bd, p))
-                                })
-                                .await
-                                .map_err(|_| warp::reject::custom(BadRequestRejection))?;
-
-                            let bd = BinaryData {
-                                binary: binary_data.ok_or_else(|| warp::reject::custom(BadRequestRejection))?,
-                                binary_type: binary_type.ok_or_else(|| warp::reject::custom(BadRequestRejection))?
-                            };
-                            let data = Data::Binary(Some(bd));
-                            let path_res = path.ok_or_else(|| warp::reject::custom(BadRequestRejection))?;
-
-
-                            let key_entry = storer
-                                .get::<SymmetricKey>(".keys.encryption.default.")
-                                .await
-                                .map_err(CryptoErrorRejection)?;
-                            let key_algo = key_entry
-                                .to_byte_algorithm(None)
-                                .await
-                                .map_err(CryptoErrorRejection)?;
-                            let data_clone = data.clone();
-                            let entry = data_clone
-                                .to_sealed_entry(path_res.clone(), key_algo)
-                                .await
-                                .map_err(CryptoErrorRejection)?;
-                            storer.create(entry).await.map_err(CryptoErrorRejection)?;
-
-                            let relay = Some("https://redact-feed-api.dev.pauwelslabs.com/redact/relay".to_owned());
-                            if let Some(relay_url) = relay {
-                                relayer
-                                    .relay(path_res.clone(), relay_url)
-                                    .await
-                                    .map_err(|_| warp::reject::custom(RelayRejection))?;
-                            }
-
-                            let is_binary_data = match data {
-                                Data::Binary(_) => true,
-                                _ => query_params.data_type == Some("binary".to_owned())
-                            };
-
-                            Ok::<_, Rejection>((
-                                Rendered::new(
-                                    render_engine,
-                                    RenderTemplate {
-                                        name: "secure",
-                                        value: TemplateValues::Secure(SecureTemplateValues {
-                                            data: Some(data),
-                                            path: Some(path_res),
-                                            token: Some(token.clone()),
-                                            css: query_params.css,
-                                            edit: query_params.edit,
-                                            data_type: query_params.data_type,
-                                            relay_url: query_params.relay_url,
-                                            js_message: query_params.js_message,
-                                            js_height_msg_prefix: query_params.js_height_msg_prefix,
-                                            is_binary_data: is_binary_data
-                                        }),
-                                    },
-                                )?,
-                                path_params,
-                                token,
-                                session_with_store,
-                            ))
-                        }
-                    }
-                    None => Err(warp::reject::custom(SessionTokenNotFoundRejection)),
-                }
-            },
-        )
-        .untuple_one()
-        .and_then(
-            move |reply: Rendered,
-                  path_params: SubmitDataPathParams,
-                  token: String,
-                  mut session_with_store: SessionWithStore<S>| async move {
-                session_with_store.cookie_options.path =
-                    Some(format!("/data/{}", path_params.token.clone()));
-                session_with_store.session.destroy();
-
-                let mut new_session = SessionWithStore::<S> {
-                    session: Session::new(),
-                    session_store: session_with_store.session_store.clone(),
-                    cookie_options: CookieOptions {
-                        cookie_name: "sid",
-                        cookie_value: None,
-                        max_age: Some(60),
-                        domain: None,
-                        path: Some(format!("/data/{}", token.clone())),
-                        secure: false,
-                        http_only: true,
-                        same_site: Some(SameSiteCookieOption::None),
-                    },
-                };
-
-                new_session
-                    .session
-                    .insert("token", token)
-                    .map_err(SerializationRejection)?;
-                Ok::<_, Rejection>((
-                    warp_sessions::reply::with_session(reply, session_with_store).await?,
-                    new_session,
-                ))
-            },
-        )
-        .untuple_one()
-        .and_then(warp_sessions::reply::with_session)
+    new_session
+        .session
+        .insert("token", token)
+        .map_err(SerializationRejection)?;
+    Ok::<_, Rejection>((
+        warp_sessions::reply::with_session(reply, session_with_store).await?,
+        new_session,
+    ))
 }
 
 #[cfg(test)]

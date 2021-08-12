@@ -217,7 +217,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                                 "u64" => Data::U64(0),
                                 "i64" => Data::I64(0),
                                 "f64" => Data::F64(0.0),
-                                "binary" => Data::Binary(None),
+                                "media" => Data::Binary(None),
                                 _ => Data::String("".to_owned()),
                             }
                         } else {

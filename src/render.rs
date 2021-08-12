@@ -163,7 +163,7 @@ fn data_input(
             ))
         }
         Data::Binary(_) => {
-            out.write("<input type=\"hidden\" name=\"value_type\" value=\"binary\">")?;
+            out.write("<input type=\"hidden\" name=\"value_type\" value=\"media\">")?;
             out.write("<input type=\"file\" class=\"file\" name=\"value\" autofocus>")
         }
     }

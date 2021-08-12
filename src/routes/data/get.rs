@@ -529,6 +529,10 @@ mod tests {
                 .withf(move |session: &Session| session.id() == expected_sid)
                 .times(1)
                 .return_once(move |_| Ok(()));
+            mock_store
+                .expect_store_session()
+                .times(1)
+                .return_once(move |_| Ok(Some("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned())));
             let session_store = ArcSessionStore(Arc::new(mock_store));
 
             let mut render_engine = MockRenderer::new();

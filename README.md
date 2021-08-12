@@ -22,32 +22,34 @@ The unsecure URL is the one placed in the third-party website's iframe, it requi
 
 ## Usage
 - Unsecure fetch data route. This URL requires no tokens and would be provided to an iframe. It returns a page with another iframe to an internal route.
-	- `GET /data/<path>?css=<string>&edit=<bool>&create=<bool>&data_type=<string>&relay_url=<string>`
+	- `GET /data/<path>?css=<string>&edit=<bool>&data_type=<string>&relay_url=<string>`
 	- `<path>` is a jsonpath-style string prepended and appended by a period, e.g. `.profile.firstName.`
 	- `css` is a URL-encoded CSS block meant to style the displayed data. The generated HTML can be seen [here](https://github.com/pauwels-labs/redact-client/tree/main/static/secure.handlebars).
 	- `edit` should be `true` or `false` depending on if the value should be displayed in an editable input field.
-	- `create` should be `true` or `false` depending on if the value should be created if it is missing
 	- `data_type` specifies the type of data to expect; this is particularly useful when creating new data that does not yet have a type. The value can be one of:
 		- `Bool`
 		- `U64`
 		- `I64`
 		- `F64`
 		- `String`
+		- `Media`
+			- A binary file which will be rendered in the browser upon retrieval. Currently supported file types are:
+				- `image/jpeg`
 	- `relay_url` provides a handle to contact with feedback on stored user input. This would typically be a URL controlled by the host of the Redact-enabled website and used for internal bookkeeping.
 	
 - Secure fetch data route. This route is a CSRF protection process to ensure the client and only the client can possibly be requesting this data.
-	- `GET /data/<path>/<token>?css=<string>&edit=<bool>&create=<bool>&data_type=<string>&relay_url=<string>`
+	- `GET /data/<path>/<token>?css=<string>&edit=<bool>&data_type=<string>&relay_url=<string>`
 	- `<path>` is a jsonpath-style string prepended and appended by a period, e.g. `.profile.firstName.`
 	- `<token>` is the secure token returned by the unsecure request
 	- `css` is a URL-encoded CSS block meant to style the displayed data. The generated HTML can be seen [here](https://github.com/pauwels-labs/redact-client/tree/main/static/secure.handlebars).
 	- `edit` should be `true` or `false` depending on if the value should be displayed in an editable input field.
-	- `create` should be `true` or `false` depending on if the value should be created if it is missing
 	- `data_type` specifies the type of data to expect; this is particularly useful when creating new data that does not yet have a type. The value can be one of:
 		- `Bool`
 		- `U64`
 		- `I64`
 		- `F64`
 		- `String`
+		- `Media`
 	- `relay_url` provides a handle to contact with feedback on stored user input. This would typically be a URL controlled by the host of the Redact-enabled website and used for internal bookkeeping.
 	- There's also a `Cookie` header implied here which must contain a session ID for the session containing the same token as the one in the query parameters.
 	

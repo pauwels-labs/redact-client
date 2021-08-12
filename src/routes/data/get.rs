@@ -228,7 +228,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
 
                 let is_binary_data = match data {
                     Data::Binary(_) => true,
-                    _ => query_params.data_type == Some("binary".to_owned())
+                    _ => query_params.data_type == Some("media".to_owned())
                 };
 
                 let reply = Rendered::new(
@@ -569,7 +569,7 @@ mod tests {
             );
 
             let res = warp::test::request()
-                .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C?create=true&data_type=String")
+                .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C?edit=true&data_type=String")
                 .header("cookie", "sid=testSID")
                 .reply(&with_token_filter)
                 .await;

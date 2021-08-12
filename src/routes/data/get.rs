@@ -451,9 +451,11 @@ mod tests {
                         ),
                         css: None,
                         edit: None,
+                        data_type: None,
                         relay_url: None,
                         js_message: None,
                         js_height_msg_prefix: None,
+                        is_binary_data: false
                     });
                     template.value == expected_value
                 })

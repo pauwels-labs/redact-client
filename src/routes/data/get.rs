@@ -317,25 +317,25 @@ mod tests {
     use mockall::predicate::*;
     use mockall::*;
     use mongodb::bson::Document;
-    use redact_crypto::{CryptoError, Entry, EntryPath, HasBuilder, State, Storer};
+    use redact_crypto::{CryptoError, Entry, EntryPath, HasBuilder, State, Storer, StorableType};
 
     mock! {
     pub Storer {}
     #[async_trait]
     impl Storer for Storer {
-    async fn get_indexed<T: HasBuilder + 'static>(
+    async fn get_indexed<T: StorableType>(
         &self,
         path: &str,
         index: &Option<Document>,
-    ) -> Result<Entry, CryptoError>;
-    async fn list_indexed<T: HasBuilder + Send + 'static>(
+    ) -> Result<Entry<T>, CryptoError>;
+    async fn list_indexed<T: StorableType>(
         &self,
         path: &str,
         skip: i64,
         page_size: i64,
         index: &Option<Document>,
-    ) -> Result<Vec<Entry>, CryptoError>;
-    async fn create(&self, path: EntryPath, value: State) -> Result<bool, CryptoError>;
+    ) -> Result<Vec<Entry<T>>, CryptoError>;
+    async fn create<T: StorableType>(&self, value: Entry<T>) -> Result<Entry<T>, CryptoError>;
     }
     impl Clone for Storer {
         fn clone(&self) -> Self;
@@ -471,13 +471,13 @@ mod tests {
                 })
                 .returning(|_, _| {
                     let builder = TypeBuilder::Data(DataBuilder::String(StringDataBuilder {}));
-                    Ok(Entry {
-                        path: ".testKey.".to_owned(),
-                        value: State::Unsealed {
-                            builder,
-                            bytes: ByteSource::Vector(VectorByteSource::new(b"someval")),
-                        },
-                    })
+                    Ok(Entry::new(
+                        ".testKey.".to_owned(),
+                        builder,
+                        State::Unsealed {
+                            bytes: ByteSource::Vector(VectorByteSource::new(Some(b"someval"))),
+                        }
+                    ))
                 });
 
             let with_token_filter = get::with_token(

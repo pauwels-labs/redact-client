@@ -92,14 +92,15 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer + 
                                     })
                                     .await?;
 
-                                p = Some(std::str::from_utf8(&data)
-                                    .unwrap()
-                                    .to_string());
+                                p = match std::str::from_utf8(&data) {
+                                    Ok(d) => Some(d.to_string()),
+                                    Err(_) => None
+                                };
                             } else if field_name == "value" {
-                                bt = Some(
-                                    BinaryType::try_from(content_type.unwrap_or_default())
-                                        .unwrap()
-                                );
+                                bt = match BinaryType::try_from(content_type.unwrap_or_default()) {
+                                    Ok(binary_type) => Some(binary_type),
+                                    Err(_) => None
+                                };
                                 let data = x.stream()
                                     .try_fold(Vec::new(), |mut vec, data| {
                                         vec.put(data);
@@ -117,7 +118,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer + 
                         binary: binary_data.ok_or_else(|| warp::reject::custom(BadRequestRejection))?,
                         binary_type: binary_type.ok_or_else(|| warp::reject::custom(BadRequestRejection))?
                     };
-                    Ok::<_, Rejection>((Data::Binary(Some(bd)), path.unwrap()))
+                    Ok::<_, Rejection>((Data::Binary(Some(bd)), path.ok_or(warp::reject::custom(BadRequestRejection))?))
                 })
             )
             .unify()

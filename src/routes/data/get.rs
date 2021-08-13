@@ -361,7 +361,7 @@ mod tests {
         use async_trait::async_trait;
         use mockall::predicate::*;
         use mockall::*;
-        use redact_crypto::{ByteSource, CryptoError, Data, DataBuilder, Entry, HasIndex, MongoStorerError, State, StringDataBuilder, TypeBuilder, VectorByteSource, BinaryDataBuilder};
+        use redact_crypto::{ByteSource, CryptoError, Data, DataBuilder, Entry, HasIndex, MongoStorerError, State, StringDataBuilder, TypeBuilder, VectorByteSource, BinaryDataBuilder, BinaryData, BinaryType};
         use serde::Serialize;
 
         use std::{
@@ -500,6 +500,190 @@ mod tests {
                     .header("cookie", "sid=testSID")
                     .reply(&with_token_filter)
                     .await;
+            assert_eq!(res.status(), 200);
+        }
+
+        #[tokio::test]
+        async fn with_token_with_data_type_binary() {
+            let mut session = Session::new();
+            session.set_cookie_value("testSID".to_owned());
+            session
+                .insert(
+                    "token",
+                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C",
+                )
+                .unwrap();
+            let expected_sid = session.id().to_owned();
+
+            let mut mock_store = MockSessionStore::new();
+            mock_store
+                .expect_load_session()
+                .with(predicate::eq("testSID".to_owned()))
+                .times(1)
+                .return_once(move |_| Ok(Some(session)));
+            mock_store
+                .expect_destroy_session()
+                .withf(move |session: &Session| session.id() == expected_sid)
+                .times(1)
+                .return_once(move |_| Ok(()));
+            let session_store = ArcSessionStore(Arc::new(mock_store));
+
+            let mut render_engine = MockRenderer::new();
+            render_engine
+                .expect_render()
+                .withf(move |template: &RenderTemplate| {
+                    let expected_value = TemplateValues::Secure(SecureTemplateValues {
+                        data: Some(Data::Binary(None)),
+                        path: Some(".testKey.".to_owned()),
+                        token: Some(
+                            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
+                                .to_owned(),
+                        ),
+                        css: None,
+                        edit: None,
+                        data_type: Some("Media".to_owned()),
+                        relay_url: None,
+                        js_message: None,
+                        js_height_msg_prefix: None,
+                        is_binary_data: true
+                    });
+                    template.value == expected_value
+                })
+                .times(1)
+                .return_once(move |_| Ok("".to_string()));
+
+            let mut token_generator = MockTokenGenerator::new();
+            token_generator
+                .expect_generate_token()
+                .times(1)
+                .returning(|| {
+                    Ok(
+                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
+                            .to_owned(),
+                    )
+                });
+
+            let mut storer = MockStorer::new();
+            storer
+                .expect_get_indexed::<Data>()
+                .times(1)
+                .withf(|path, index| {
+                    path == ".testKey." && *index == Some(Data::get_index().unwrap())
+                })
+                .returning(|_, _| {
+                    Err(CryptoError::NotFound {
+                        source: Box::new(CryptoError::NotDowncastable)
+                    })
+                });
+
+            let with_token_filter = get::with_token(
+                session_store,
+                Arc::new(render_engine),
+                Arc::new(token_generator),
+                Arc::new(storer),
+            );
+
+            let res = warp::test::request()
+                .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C?data_type=Media")
+                .header("cookie", "sid=testSID")
+                .reply(&with_token_filter)
+                .await;
+            assert_eq!(res.status(), 200);
+        }
+
+        #[tokio::test]
+        async fn with_token_with_existing_binary_data() {
+            let mut session = Session::new();
+            session.set_cookie_value("testSID".to_owned());
+            session
+                .insert(
+                    "token",
+                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C",
+                )
+                .unwrap();
+            let expected_sid = session.id().to_owned();
+
+            let mut mock_store = MockSessionStore::new();
+            mock_store
+                .expect_load_session()
+                .with(predicate::eq("testSID".to_owned()))
+                .times(1)
+                .return_once(move |_| Ok(Some(session)));
+            mock_store
+                .expect_destroy_session()
+                .withf(move |session: &Session| session.id() == expected_sid)
+                .times(1)
+                .return_once(move |_| Ok(()));
+            let session_store = ArcSessionStore(Arc::new(mock_store));
+
+            let mut render_engine = MockRenderer::new();
+            render_engine
+                .expect_render()
+                .withf(move |template: &RenderTemplate| {
+                    let expected_value = TemplateValues::Secure(SecureTemplateValues {
+                        data: Some(Data::Binary(Some(BinaryData {
+                            binary_type: BinaryType::ImageJPEG,
+                            binary: "abc".to_owned()
+                        }))),
+                        path: Some(".testKey.".to_owned()),
+                        token: Some(
+                            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
+                                .to_owned(),
+                        ),
+                        css: None,
+                        edit: None,
+                        data_type: None,
+                        relay_url: None,
+                        js_message: None,
+                        js_height_msg_prefix: None,
+                        is_binary_data: true
+                    });
+                    template.value == expected_value
+                })
+                .times(1)
+                .return_once(move |_| Ok("".to_string()));
+
+            let mut token_generator = MockTokenGenerator::new();
+            token_generator
+                .expect_generate_token()
+                .times(1)
+                .returning(|| {
+                    Ok(
+                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
+                            .to_owned(),
+                    )
+                });
+
+            let mut storer = MockStorer::new();
+            storer
+                .expect_get_indexed::<Data>()
+                .times(1)
+                .withf(|path, index| {
+                    path == ".testKey." && *index == Some(Data::get_index().unwrap())
+                })
+                .returning(|_, _| {
+                    let builder = TypeBuilder::Data(DataBuilder::Binary(BinaryDataBuilder {}));
+                    Ok(Entry::new(
+                        ".testKey.".to_owned(),
+                        builder,
+                        State::Unsealed {
+                            bytes: ByteSource::Vector(VectorByteSource::new(Some(b"{\"binary\":\"abc\",\"binary_type\":\"ImageJPEG\"}"))),
+                        }
+                    ))
+                });
+
+            let with_token_filter = get::with_token(
+                session_store,
+                Arc::new(render_engine),
+                Arc::new(token_generator),
+                Arc::new(storer),
+            );
+
+            let res = warp::test::request()
+                .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C")
+                .header("cookie", "sid=testSID")
+                .reply(&with_token_filter)
+                .await;
             assert_eq!(res.status(), 200);
         }
 

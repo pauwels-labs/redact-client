@@ -151,7 +151,7 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
         .and_then(warp_sessions::reply::with_session)
 }
 
-pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
+pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer + Clone>(
     session_store: S,
     render_engine: R,
     token_generator: T,
@@ -361,10 +361,7 @@ mod tests {
         use async_trait::async_trait;
         use mockall::predicate::*;
         use mockall::*;
-        use redact_crypto::{
-            ByteSource, CryptoError, Data, DataBuilder, Entry, HasIndex, MongoStorerError, State,
-            StringDataBuilder, TypeBuilder, VectorByteSource,
-        };
+        use redact_crypto::{ByteSource, CryptoError, Data, DataBuilder, Entry, HasIndex, MongoStorerError, State, StringDataBuilder, TypeBuilder, VectorByteSource, BinaryDataBuilder};
         use serde::Serialize;
 
         use std::{
@@ -886,5 +883,7 @@ mod tests {
                 .await;
             assert_eq!(res.status(), 500);
         }
+
+
     }
 }

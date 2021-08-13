@@ -44,7 +44,7 @@ warp-sessions = "1.0.13"
 base64 = "0.13.0"
 sodiumoxide = "0.2.6"
 http = "0.2.4"
-redact-crypto = { git = "https://github.com/pauwels-labs/redact-crypto.git", rev = "14fa0afc08f43890b781206d4d3437fb92da6c9e" }
+redact-crypto = { git = "https://github.com/pauwels-labs/redact-crypto.git", rev = "29fbd9a122092940534f928d8b69f995ab154114" }
 bson = "1.2.2"
 regex = "1.5.4"
 percent-encoding = "2.1.0"

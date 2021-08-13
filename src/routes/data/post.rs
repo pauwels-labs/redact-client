@@ -58,7 +58,7 @@ struct SubmitDataQueryParams {
     js_height_msg_prefix: Option<String>
 }
 
-pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q: Relayer>(
+pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer + Clone, Q: Relayer>(
     session_store: S,
     render_engine: R,
     token_generator: T,
@@ -158,7 +158,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                 .await
                                 .map_err(CryptoErrorRejection)?;
                             let key_algo = key_entry
-                                .to_byte_algorithm(None)
+                                .to_symmetric_byte_algorithm(None)
                                 .await
                                 .map_err(CryptoErrorRejection)?;
                             let data_clone = data.clone();

@@ -327,6 +327,7 @@ mod tests {
     use mockall::*;
     use mongodb::bson::Document;
     use redact_crypto::{CryptoError, Entry, EntryPath, HasBuilder, State, Storer, StorableType};
+    use crate::token::tests::MockTokenGenerator;
 
     mock! {
     pub Storer {}
@@ -369,6 +370,7 @@ mod tests {
             sync::Arc,
         };
         use warp_sessions::{ArcSessionStore, Session, SessionStore};
+        use crate::routes::data::get::tests::setup_mock_token_helper;
 
         mock! {
                     pub SessionStore {}
@@ -412,27 +414,10 @@ mod tests {
 
         #[tokio::test]
         async fn with_token_with_no_query_params() {
-            let mut session = Session::new();
-            session.set_cookie_value("testSID".to_owned());
-            session
-                .insert(
-                    "token",
-                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C",
-                )
-                .unwrap();
+            let session = setup_session_helper("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D");
             let expected_sid = session.id().to_owned();
 
-            let mut mock_store = MockSessionStore::new();
-            mock_store
-                .expect_load_session()
-                .with(predicate::eq("testSID".to_owned()))
-                .times(1)
-                .return_once(move |_| Ok(Some(session)));
-            mock_store
-                .expect_destroy_session()
-                .withf(move |session: &Session| session.id() == expected_sid)
-                .times(1)
-                .return_once(move |_| Ok(()));
+            let mock_store = setup_mock_session_store_helper(expected_sid, session);
             let session_store = ArcSessionStore(Arc::new(mock_store));
 
             let mut render_engine = MockRenderer::new();
@@ -459,16 +444,9 @@ mod tests {
                 .times(1)
                 .return_once(move |_| Ok("".to_string()));
 
-            let mut token_generator = MockTokenGenerator::new();
-            token_generator
-                .expect_generate_token()
-                .times(1)
-                .returning(|| {
-                    Ok(
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
-                            .to_owned(),
-                    )
-                });
+            let token_generator = setup_mock_token_helper(
+                "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D".to_owned(),
+            );
 
             let mut storer = MockStorer::new();
             storer
@@ -496,7 +474,7 @@ mod tests {
             );
 
             let res = warp::test::request()
-                    .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C")
+                    .path("/data/.testKey./E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D")
                     .header("cookie", "sid=testSID")
                     .reply(&with_token_filter)
                     .await;
@@ -505,27 +483,9 @@ mod tests {
 
         #[tokio::test]
         async fn with_token_with_data_type_binary() {
-            let mut session = Session::new();
-            session.set_cookie_value("testSID".to_owned());
-            session
-                .insert(
-                    "token",
-                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C",
-                )
-                .unwrap();
+            let session = setup_session_helper("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C");
             let expected_sid = session.id().to_owned();
-
-            let mut mock_store = MockSessionStore::new();
-            mock_store
-                .expect_load_session()
-                .with(predicate::eq("testSID".to_owned()))
-                .times(1)
-                .return_once(move |_| Ok(Some(session)));
-            mock_store
-                .expect_destroy_session()
-                .withf(move |session: &Session| session.id() == expected_sid)
-                .times(1)
-                .return_once(move |_| Ok(()));
+            let mock_store = setup_mock_session_store_helper(expected_sid, session);
             let session_store = ArcSessionStore(Arc::new(mock_store));
 
             let mut render_engine = MockRenderer::new();
@@ -552,16 +512,9 @@ mod tests {
                 .times(1)
                 .return_once(move |_| Ok("".to_string()));
 
-            let mut token_generator = MockTokenGenerator::new();
-            token_generator
-                .expect_generate_token()
-                .times(1)
-                .returning(|| {
-                    Ok(
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
-                            .to_owned(),
-                    )
-                });
+            let token_generator = setup_mock_token_helper(
+                "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D".to_owned(),
+            );
 
             let mut storer = MockStorer::new();
             storer
@@ -593,27 +546,10 @@ mod tests {
 
         #[tokio::test]
         async fn with_token_with_existing_binary_data() {
-            let mut session = Session::new();
-            session.set_cookie_value("testSID".to_owned());
-            session
-                .insert(
-                    "token",
-                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C",
-                )
-                .unwrap();
+            let session = setup_session_helper("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C");
             let expected_sid = session.id().to_owned();
 
-            let mut mock_store = MockSessionStore::new();
-            mock_store
-                .expect_load_session()
-                .with(predicate::eq("testSID".to_owned()))
-                .times(1)
-                .return_once(move |_| Ok(Some(session)));
-            mock_store
-                .expect_destroy_session()
-                .withf(move |session: &Session| session.id() == expected_sid)
-                .times(1)
-                .return_once(move |_| Ok(()));
+            let mock_store = setup_mock_session_store_helper(expected_sid, session);
             let session_store = ArcSessionStore(Arc::new(mock_store));
 
             let mut render_engine = MockRenderer::new();
@@ -627,7 +563,7 @@ mod tests {
                         }))),
                         path: Some(".testKey.".to_owned()),
                         token: Some(
-                            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
+                            "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
                                 .to_owned(),
                         ),
                         css: None,
@@ -643,16 +579,9 @@ mod tests {
                 .times(1)
                 .return_once(move |_| Ok("".to_string()));
 
-            let mut token_generator = MockTokenGenerator::new();
-            token_generator
-                .expect_generate_token()
-                .times(1)
-                .returning(|| {
-                    Ok(
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
-                            .to_owned(),
-                    )
-                });
+            let token_generator = setup_mock_token_helper(
+                "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned(),
+            );
 
             let mut storer = MockStorer::new();
             storer
@@ -689,27 +618,10 @@ mod tests {
 
         #[tokio::test]
         async fn with_token_create() {
-            let mut session = Session::new();
-            session.set_cookie_value("testSID".to_owned());
-            session
-                .insert(
-                    "token",
-                    "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C",
-                )
-                .unwrap();
+            let session = setup_session_helper("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C");
             let expected_sid = session.id().to_owned();
 
-            let mut mock_store = MockSessionStore::new();
-            mock_store
-                .expect_load_session()
-                .with(predicate::eq("testSID".to_owned()))
-                .times(1)
-                .return_once(move |_| Ok(Some(session)));
-            mock_store
-                .expect_destroy_session()
-                .withf(move |session: &Session| session.id() == expected_sid)
-                .times(1)
-                .return_once(move |_| Ok(()));
+            let mut mock_store = setup_mock_session_store_helper(expected_sid, session);
             mock_store
                 .expect_store_session()
                 .times(1)
@@ -722,16 +634,9 @@ mod tests {
                 .times(1)
                 .return_once(move |_| Ok("".to_string()));
 
-            let mut token_generator = MockTokenGenerator::new();
-            token_generator
-                .expect_generate_token()
-                .times(1)
-                .returning(|| {
-                    Ok(
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D"
-                            .to_owned(),
-                    )
-                });
+            let token_generator = setup_mock_token_helper(
+                "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned(),
+            );
 
             let mut storer = MockStorer::new();
             storer
@@ -760,6 +665,32 @@ mod tests {
                 .await;
             assert_eq!(res.status(), 200);
         }
+
+        // Helper method for creating a Session with a given token
+        fn setup_session_helper(token: &str) -> Session {
+            let mut session = Session::new();
+            session.set_cookie_value("testSID".to_owned());
+            session
+                .insert("token", token)
+                .unwrap();
+            session
+        }
+
+        // Helper method to setup the mock session store and the load & destroy session method mocks
+        fn setup_mock_session_store_helper(expected_sid: String, session: Session) -> MockSessionStore {
+            let mut mock_store = MockSessionStore::new();
+            mock_store
+                .expect_load_session()
+                .with(predicate::eq("testSID".to_owned()))
+                .times(1)
+                .return_once(move |_| Ok(Some(session)));
+            mock_store
+                .expect_destroy_session()
+                .withf(move |session: &Session| session.id() == expected_sid)
+                .times(1)
+                .return_once(move |_| Ok(()));
+            mock_store
+        }
     }
 
     mod without_token {
@@ -770,6 +701,7 @@ mod tests {
         use crate::token::tests::MockTokenGenerator;
         use std::sync::Arc;
         use warp_sessions::MemoryStore;
+        use crate::routes::data::get::tests::setup_mock_token_helper;
 
         #[tokio::test]
         async fn without_token_with_no_query_params() {
@@ -794,17 +726,9 @@ mod tests {
                 })
                 .times(1)
                 .return_once(move |_| Ok("".to_string()));
-
-            let mut token_generator = MockTokenGenerator::new();
-            token_generator
-                .expect_generate_token()
-                .times(1)
-                .returning(|| {
-                    Ok(
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
-                            .to_owned(),
-                    )
-                });
+            let token_generator = setup_mock_token_helper(
+                "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned()
+            );
 
             let without_token_filter = get::without_token(
                 session_store,
@@ -842,17 +766,9 @@ mod tests {
                 })
                 .times(1)
                 .return_once(move |_| Ok("".to_string()));
-
-            let mut token_generator = MockTokenGenerator::new();
-            token_generator
-                .expect_generate_token()
-                .times(1)
-                .returning(|| {
-                    Ok(
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
-                            .to_owned(),
-                    )
-                });
+            let token_generator = setup_mock_token_helper(
+                "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned(),
+            );
 
             let without_token_filter = get::without_token(
                 session_store,
@@ -889,17 +805,7 @@ mod tests {
                 })
                 .times(1)
                 .return_once(move |_| Ok("".to_string()));
-
-            let mut token_generator = MockTokenGenerator::new();
-            token_generator
-                .expect_generate_token()
-                .times(1)
-                .returning(|| {
-                    Ok(
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
-                            .to_owned(),
-                    )
-                });
+            let token_generator = setup_mock_token_helper("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned());
 
             let without_token_filter = get::without_token(
                 session_store,
@@ -937,16 +843,7 @@ mod tests {
                 .times(1)
                 .return_once(move |_| Ok("".to_string()));
 
-            let mut token_generator = MockTokenGenerator::new();
-            token_generator
-                .expect_generate_token()
-                .times(1)
-                .returning(|| {
-                    Ok(
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
-                            .to_owned(),
-                    )
-                });
+            let token_generator = setup_mock_token_helper("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned());
 
             let without_token_filter = get::without_token(
                 session_store,
@@ -986,16 +883,7 @@ mod tests {
                 .times(1)
                 .return_once(move |_| Ok("".to_string()));
 
-            let mut token_generator = MockTokenGenerator::new();
-            token_generator
-                .expect_generate_token()
-                .times(1)
-                .returning(|| {
-                    Ok(
-                        "E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C"
-                            .to_owned(),
-                    )
-                });
+            let token_generator = setup_mock_token_helper("E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9C".to_owned());
 
             let without_token_filter = get::without_token(
                 session_store,
@@ -1069,5 +957,15 @@ mod tests {
         }
 
 
+    }
+
+    // Helper method which sets up a mock TokenGenerator which returns a given token on generate_token()
+    fn setup_mock_token_helper(token: String) -> MockTokenGenerator {
+        let mut token_generator = MockTokenGenerator::new();
+        token_generator
+            .expect_generate_token()
+            .times(1)
+            .returning(move || Ok(token.to_owned()));
+        token_generator
     }
 }

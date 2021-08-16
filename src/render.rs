@@ -1,5 +1,5 @@
 use handlebars::{Context, Handlebars, Helper, Output, RenderContext, RenderError as HandlebarsRenderError, TemplateError as HandlebarsTemplateError};
-use redact_crypto::Data;
+use redact_crypto::{Data, BinaryType};
 use serde::{Serialize};
 use std::convert::From;
 use std::ops::Deref;
@@ -99,7 +99,26 @@ fn data_display(
     match value {
         Data::Binary(b) => {
             match b {
-                Some(binary) => out.write(&format!("<img id=\"data\" src=\"data:{};base64, {}\"/>", binary.binary_type.to_string(), binary.binary)).map_err(|e| e.into()),
+                Some(binary) => {
+                    match binary.binary_type {
+                        BinaryType::VideoMP4 | BinaryType::VideoMPEG => {
+                            out.write(
+                                &format!(
+                                    "<video controls id=\"data\"><source src=\"data:{};base64, {}\"></video>",
+                                    binary.binary_type.to_string(),
+                                    binary.binary
+                                )
+                            ).map_err(|e| e.into())
+                        },
+                        _ => out.write(
+                            &format!(
+                                "<img id=\"data\" src=\"data:{};base64, {}\"/>",
+                                binary.binary_type.to_string(),
+                                binary.binary
+                            )
+                        ).map_err(|e| e.into()),
+                    }
+                }
                 None => out.write("").map_err(|e| e.into()),
             }
 

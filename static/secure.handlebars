@@ -4,7 +4,7 @@
       {{ Secure.css }}
     </style>
   </head>
-  <body style="border: blue;">
+  <body {{ #if Secure.edit }} style="border: 2px solid #{{Secure.code_color}};" {{ /if }}>
     {{ #if Secure.edit }}
 <form id="form" action="/data/{{ Secure.token }}?css={{ Secure.css }}&edit={{ Secure.edit }}{{ #if Secure.js_height_msg_prefix }}&js_height_msg_prefix={{ Secure.js_height_msg_prefix }}{{ /if }}{{ #if Secure.js_message }}&js_message={{ Secure.js_message }}{{ /if }}{{ #if Secure.relay_url }}&relay_url={{ Secure.relay_url }}{{ /if }}" method="POST" {{ #if Secure.is_binary_data }}enctype="multipart/form-data"{{/if}}>
       {{ #if Secure.relay_url }}
@@ -15,7 +15,9 @@
 	  {{ /if }}
       <input type="hidden" value="{{ Secure.path }}" id="path" name="path">
       {{ data_input Secure.data }}
-      <input type="submit" value="Submit" name="submit" id="submit">
+      <button type="submit" name="submit" id="submit">
+		  Submit<span style="font-size: 8px;color:grey;">🔒{{Secure.code_phrase}}</span>
+	  </button>
     </form>
     {{ else }}
         {{ data_display Secure.data }}

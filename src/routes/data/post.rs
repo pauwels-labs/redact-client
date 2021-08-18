@@ -74,7 +74,8 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer + 
                 Ok::<_, Rejection>((Data::try_from(body)?, path))
             },)
             .or(warp::filters::multipart::form()
-                .and_then(move |form: FormData| async {
+                .max_length(1024 * 1024 * 16) // 16 MB
+                .and_then(|form: FormData| async {
                     let binary_type: Option<BinaryType> = None;
                     let binary_data: Option<String> = None;
                     let path: Option<String> = None;

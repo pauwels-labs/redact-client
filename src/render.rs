@@ -6,6 +6,8 @@ use std::ops::Deref;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 use warp::{reject::Reject, Reply};
+use itertools::free::join;
+use strum::IntoEnumIterator;
 
 #[derive(Error, Debug)]
 pub enum RenderError {
@@ -104,7 +106,7 @@ fn data_display(
                         BinaryType::VideoMP4 | BinaryType::VideoMPEG => {
                             out.write(
                                 &format!(
-                                    "<video controls id=\"data\"><source src=\"data:{};base64, {}\"></video>",
+                                    "<video controls id=\"data-video\"><source src=\"data:{};base64, {}\"></video>",
                                     binary.binary_type.to_string(),
                                     binary.binary
                                 )
@@ -183,7 +185,10 @@ fn data_input(
         }
         Data::Binary(_) => {
             out.write("<input type=\"hidden\" name=\"value_type\" value=\"media\">")?;
-            out.write("<input type=\"file\" class=\"file\" name=\"value\" autofocus>")
+            out.write(&format!(
+                "<input type=\"file\" class=\"file\" name=\"value\" accept=\"{}\"autofocus>",
+                &join(BinaryType::iter(), &",")
+            ))
         }
     }
     .map_err(|e| e.into())

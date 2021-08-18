@@ -667,6 +667,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "either"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
+
+[[package]]
 name = "encoding_rs"
 version = "0.8.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1315,6 +1321,15 @@ name = "ipnet"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68f2d64f2edebec4ce84ad108148e67e1064789bee435edc5b60ad398714a3a9"
+
+[[package]]
+name = "itertools"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69ddb889f9d0d08a67338271fa9b62996bc788c7796a5c18cf057420aaed5eaf"
+dependencies = [
+ "either",
+]
 
 [[package]]
 name = "itoa"
@@ -2149,6 +2164,7 @@ dependencies = [
  "handlebars",
  "http",
  "hyper 0.14.10",
+ "itertools",
  "mockall",
  "mockito",
  "mongodb",
@@ -2163,6 +2179,7 @@ dependencies = [
  "serde_json",
  "sha2 0.9.5",
  "sodiumoxide",
+ "strum",
  "thiserror",
  "tokio 1.8.1",
  "url",
@@ -2184,7 +2201,7 @@ dependencies = [
 [[package]]
 name = "redact-crypto"
 version = "0.1.0"
-source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=8c04c54c7fde95c13c8461863dea27a8ce63e160#8c04c54c7fde95c13c8461863dea27a8ce63e160"
+source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=2b29a1c92b687d2c8b190b8241160a08222a6037#2b29a1c92b687d2c8b190b8241160a08222a6037"
 dependencies = [
  "async-recursion",
  "async-trait",
@@ -2199,6 +2216,7 @@ dependencies = [
  "serde 1.0.126",
  "serde_json",
  "sodiumoxide",
+ "strum",
  "uuid",
 ]
 
@@ -2687,6 +2705,27 @@ name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
+
+[[package]]
+name = "strum"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aaf86bbcfd1fa9670b7a129f64fc0c9fcbbfe4f1bc4210e9e98fe71ffc12cde2"
+dependencies = [
+ "strum_macros",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d06aaeeee809dbc59eb4556183dd927df67db1540de5be8d3ec0b6636358a5ec"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "subtle"

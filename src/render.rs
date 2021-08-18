@@ -48,7 +48,9 @@ pub struct SecureTemplateValues {
     pub relay_url: Option<String>,
     pub js_message: Option<String>,
     pub js_height_msg_prefix: Option<String>,
-    pub is_binary_data: bool
+    pub is_binary_data: bool,
+    pub code_phrase: String,
+    pub code_color: String
 }
 
 impl From<HandlebarsTemplateError> for RenderError {

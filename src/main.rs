@@ -53,6 +53,10 @@ async fn main() {
     // Determine port to listen on
     let port = get_port(&config);
 
+    // Values used for verifying Redact editable fields
+    let code_phrase=config.get_str("code.phrase").unwrap();
+    let code_color=config.get_str("code.color").unwrap();
+
     // Load HTML templates
     let mut template_mapping = HashMap::new();
     template_mapping.insert("unsecure", "./static/unsecure.handlebars");
@@ -107,6 +111,8 @@ async fn main() {
             token_generator.clone(),
             storer_shared.clone(),
             relayer.clone(),
+            code_phrase.clone(),
+            code_color.clone()
         ))
         .with(secure_cors.clone());
     let get_routes = warp::get().and(
@@ -115,6 +121,8 @@ async fn main() {
             render_engine.clone(),
             token_generator.clone(),
             storer_shared.clone(),
+            code_phrase,
+            code_color
         )
         .with(unsecure_cors.clone())
         .or(routes::data::get::without_token(

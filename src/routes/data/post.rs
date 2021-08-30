@@ -64,6 +64,8 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer + 
     token_generator: T,
     storer: H,
     relayer: Q,
+    code_phrase: String,
+    code_color: String
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::any()
         .and(warp::path!("data" / String).map(|token| SubmitDataPathParams { token }))
@@ -141,6 +143,8 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer + 
         .and(warp::any().map(move || render_engine.clone()))
         .and(warp::any().map(move || storer.clone()))
         .and(warp::any().map(move || relayer.clone()))
+        .and(warp::any().map(move || code_phrase.clone()))
+        .and(warp::any().map(move || code_color.clone()))
         .and_then(
             move |path_params: SubmitDataPathParams,
                   query_params: SubmitDataQueryParams,
@@ -149,7 +153,9 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer + 
                   token: String,
                   render_engine: R,
                   storer: H,
-                  relayer: Q| async move {
+                  relayer: Q,
+                  code_phrase,
+                  code_color| async move {
                 match session_with_store.session.get("token") {
                     Some::<String>(session_token) => {
                         if session_token != path_params.token {
@@ -191,7 +197,9 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer + 
                                             relay_url: query_params.relay_url,
                                             js_message: query_params.js_message,
                                             js_height_msg_prefix: query_params.js_height_msg_prefix,
-                                            is_binary_data: false
+                                            is_binary_data: false,
+                                            code_phrase,
+                                            code_color
                                         }),
                                     },
                                 )?,

@@ -156,6 +156,8 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer + C
     render_engine: R,
     token_generator: T,
     storer: H,
+    code_phrase: String,
+    code_color: String
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::any()
         .and(
@@ -179,13 +181,17 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer + C
         .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
         .and(warp::any().map(move || render_engine.clone()))
         .and(warp::any().map(move || storer.clone()))
+        .and(warp::any().map(move || code_phrase.clone()))
+        .and(warp::any().map(move || code_color.clone()))
         .and_then(
             move |path_params: WithTokenPathParams,
                   query_params: WithTokenQueryParams,
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R,
-                  storer: H| async move {
+                  storer: H,
+                  code_phrase,
+                  code_color| async move {
                 if let Some(session_token) = session_with_store.session.get::<String>("token") {
                     if session_token != path_params.token {
                         Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
@@ -245,7 +251,9 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer + C
                             relay_url: query_params.relay_url,
                             js_message: query_params.js_message,
                             js_height_msg_prefix: query_params.js_height_msg_prefix,
-                            is_binary_data: is_binary_data
+                            is_binary_data: is_binary_data,
+                            code_phrase,
+                            code_color
                         }),
                     },
                 )?;

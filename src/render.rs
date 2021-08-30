@@ -1,14 +1,13 @@
-use handlebars::{
-    Context, Handlebars, Helper, Output, RenderContext, RenderError as HandlebarsRenderError,
-    TemplateError as HandlebarsTemplateError,
-};
-use redact_crypto::Data;
-use serde::Serialize;
+use handlebars::{Context, Handlebars, Helper, Output, RenderContext, RenderError as HandlebarsRenderError, TemplateError as HandlebarsTemplateError};
+use redact_crypto::{Data, BinaryType};
+use serde::{Serialize};
 use std::convert::From;
 use std::ops::Deref;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 use warp::{reject::Reject, Reply};
+use itertools::free::join;
+use strum::IntoEnumIterator;
 
 #[derive(Error, Debug)]
 pub enum RenderError {
@@ -45,9 +44,11 @@ pub struct SecureTemplateValues {
     pub token: Option<String>,
     pub css: Option<String>,
     pub edit: Option<bool>,
+    pub data_type: Option<String>,
     pub relay_url: Option<String>,
     pub js_message: Option<String>,
-    pub js_height_msg_prefix: Option<String>
+    pub js_height_msg_prefix: Option<String>,
+    pub is_binary_data: bool
 }
 
 impl From<HandlebarsTemplateError> for RenderError {
@@ -97,7 +98,35 @@ fn data_display(
             serde_json::value::from_value(data.value().to_owned()).map_err(|e| e.into())
         })?;
 
-    out.write(&value.to_string()).map_err(|e| e.into())
+    match value {
+        Data::Binary(b) => {
+            match b {
+                Some(binary) => {
+                    match binary.binary_type {
+                        BinaryType::VideoMP4 | BinaryType::VideoMPEG => {
+                            out.write(
+                                &format!(
+                                    "<video controls id=\"data-video\"><source src=\"data:{};base64, {}\"></video>",
+                                    binary.binary_type.to_string(),
+                                    binary.binary
+                                )
+                            ).map_err(|e| e.into())
+                        },
+                        _ => out.write(
+                            &format!(
+                                "<img id=\"data\" src=\"data:{};base64, {}\"/>",
+                                binary.binary_type.to_string(),
+                                binary.binary
+                            )
+                        ).map_err(|e| e.into()),
+                    }
+                }
+                None => out.write("").map_err(|e| e.into()),
+            }
+
+        },
+        b => out.write(&format!("<p id=\"data\">{}</p>", &b.to_string())).map_err(|e| e.into())
+    }
 }
 
 fn data_input(
@@ -152,6 +181,13 @@ fn data_input(
             out.write(&format!(
                 "<input type=\"text\" class=\"text\" name=\"value\" value=\"{}\" autofocus>",
                 s
+            ))
+        }
+        Data::Binary(_) => {
+            out.write("<input type=\"hidden\" name=\"value_type\" value=\"media\">")?;
+            out.write(&format!(
+                "<input type=\"file\" class=\"file\" name=\"value\" accept=\"{}\"autofocus>",
+                &join(BinaryType::iter(), &",")
             ))
         }
     }

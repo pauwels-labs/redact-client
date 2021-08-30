@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
+use std::sync::Arc;
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -65,17 +66,17 @@ async fn main() {
     let storage_url = config.get_str("storage.url").unwrap();
 
     // Get the bootstrap key from config
-    let storer = RedactStorer::new(&storage_url);
+    let storer_shared = Arc::new(RedactStorer::new(&storage_url));
     let user_akey: Entry<SecretAsymmetricKey> =
-        bootstrap::setup_entry(&config, "crypto.user.key", &storer)
+        bootstrap::setup_entry(&config, "crypto.user.key", &storer_shared)
             .await
             .unwrap();
     let client_akey: Entry<SecretAsymmetricKey> =
-        bootstrap::setup_entry(&config, "crypto.client.key", &storer)
+        bootstrap::setup_entry(&config, "crypto.client.key", &storer_shared)
             .await
             .unwrap();
     let default_skey: Entry<SymmetricKey> =
-        bootstrap::setup_entry(&config, "crypto.encryption.default", &storer)
+        bootstrap::setup_entry(&config, "crypto.encryption.default", &storer_shared)
             .await
             .unwrap();
 
@@ -104,7 +105,7 @@ async fn main() {
             session_store.clone(),
             render_engine.clone(),
             token_generator.clone(),
-            storer.clone(),
+            storer_shared.clone(),
             relayer.clone(),
         ))
         .with(secure_cors.clone());
@@ -113,7 +114,7 @@ async fn main() {
             session_store.clone(),
             render_engine.clone(),
             token_generator.clone(),
-            storer.clone(),
+            storer_shared.clone(),
         )
         .with(unsecure_cors.clone())
         .or(routes::data::get::without_token(

@@ -19,7 +19,6 @@ use redact_crypto::{
 };
 use render::HandlebarsRenderer;
 use serde::Serialize;
-use std::sync::Arc;
 use std::{collections::HashMap, fs::File, io::Write, sync::Arc};
 use token::FromThreadRng;
 use warp::Filter;
@@ -75,14 +74,18 @@ async fn main() {
     // Get the bootstrap key from config
     let storer_shared = Arc::new(RedactStorer::new(&storage_url));
     let user_signing_root_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
-        bootstrap::setup_entry(&config, "keys.user.signing.root", &storer)
+        bootstrap::setup_entry(&config, "keys.user.signing.root", &storer_shared)
             .await
             .unwrap();
     let user_signing_root_key = user_signing_root_key_entry.resolve().await.unwrap();
     let user_encryption_root_key_entry: Entry<SodiumOxideCurve25519SecretAsymmetricKey> =
-        bootstrap::setup_entry(&config, "keys.user.encryption.asymmetric.default", &storer)
-            .await
-            .unwrap();
+        bootstrap::setup_entry(
+            &config,
+            "keys.user.encryption.asymmetric.default",
+            &storer_shared,
+        )
+        .await
+        .unwrap();
     let user_encryption_root_key = user_encryption_root_key_entry.take_resolve().await.unwrap();
 
     let root_signing_cert = bootstrap::setup_cert::<_, SodiumOxideEd25519PublicAsymmetricKey>(

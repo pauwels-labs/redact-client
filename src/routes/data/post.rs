@@ -64,7 +64,7 @@ pub fn submit_data<
     S: SessionStore,
     R: Renderer,
     T: TokenGenerator,
-    H: Storer + Clone,
+    H: Storer,
     Q: Relayer,
 >(
     session_store: S,

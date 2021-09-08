@@ -153,7 +153,7 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
         .and_then(warp_sessions::reply::with_session)
 }
 
-pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer + Clone>(
+pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
     session_store: S,
     render_engine: R,
     token_generator: T,

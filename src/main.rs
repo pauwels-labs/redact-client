@@ -19,6 +19,7 @@ use redact_crypto::{
 };
 use render::HandlebarsRenderer;
 use serde::Serialize;
+use std::sync::Arc;
 use std::{collections::HashMap, fs::File, io::Write, sync::Arc};
 use token::FromThreadRng;
 use warp::Filter;
@@ -72,7 +73,7 @@ async fn main() {
     let storage_url = config.get_str("storage.url").unwrap();
 
     // Get the bootstrap key from config
-    let storer = Arc::new(RedactStorer::new(&storage_url));
+    let storer_shared = Arc::new(RedactStorer::new(&storage_url));
     let user_signing_root_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
         bootstrap::setup_entry(&config, "keys.user.signing.root", &storer)
             .await
@@ -139,7 +140,7 @@ async fn main() {
             session_store.clone(),
             render_engine.clone(),
             token_generator.clone(),
-            storer.clone(),
+            storer_shared.clone(),
             relayer.clone(),
         ))
         .with(secure_cors.clone());
@@ -148,7 +149,7 @@ async fn main() {
             session_store.clone(),
             render_engine.clone(),
             token_generator.clone(),
-            storer.clone(),
+            storer_shared.clone(),
         )
         .with(unsecure_cors.clone())
         .or(routes::data::get::without_token(

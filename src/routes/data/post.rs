@@ -8,11 +8,16 @@ use crate::{
     },
     token::TokenGenerator,
 };
-use redact_crypto::{Data, Storer, SymmetricKey, ToEntry};
+use bytes::buf::BufMut;
+use futures::TryStreamExt;
+use redact_crypto::{BinaryData, BinaryType, Data, Storer, SymmetricKey, ToEntry};
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, sync::Arc};
+use warp::filters::multipart::FormData;
 use warp::{Filter, Rejection, Reply};
-use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore};
+use warp_sessions::{
+    CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore, WithSession,
+};
 
 #[derive(Deserialize, Serialize)]
 struct SubmitDataPathParams {
@@ -24,8 +29,6 @@ struct SubmitDataBodyParams {
     path: String,
     value: Option<String>,
     value_type: String,
-    relay_url: Option<String>,
-    js_message: Option<String>,
 }
 
 impl TryFrom<SubmitDataBodyParams> for Data {
@@ -51,11 +54,19 @@ impl TryFrom<SubmitDataBodyParams> for Data {
 struct SubmitDataQueryParams {
     css: Option<String>,
     edit: Option<bool>,
-    index: Option<i64>,
-    fetch_id: Option<String>,
+    data_type: Option<String>,
+    relay_url: Option<String>,
+    js_message: Option<String>,
+    js_height_msg_prefix: Option<String>,
 }
 
-pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q: Relayer>(
+pub fn submit_data<
+    S: SessionStore,
+    R: Renderer,
+    T: TokenGenerator,
+    H: Storer + Clone,
+    Q: Relayer,
+>(
     session_store: S,
     render_engine: R,
     token_generator: T,
@@ -66,11 +77,76 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
         .and(warp::path!("data" / String).map(|token| SubmitDataPathParams { token }))
         .and(warp::query::<SubmitDataQueryParams>())
         .and(
-            warp::filters::body::form::<SubmitDataBodyParams>().and_then(
-                move |body: SubmitDataBodyParams| async {
-                    Ok::<_, Rejection>((body.clone(), Data::try_from(body)?))
-                },
-            ),
+            warp::filters::body::form::<SubmitDataBodyParams>()
+                .and_then(move |body: SubmitDataBodyParams| async {
+                    let path = body.path.clone();
+                    Ok::<_, Rejection>((Data::try_from(body)?, path))
+                })
+                .or(warp::filters::multipart::form()
+                    .max_length(1024 * 1024 * 16) // 16 MB
+                    .and_then(|form: FormData| async {
+                        let binary_type: Option<BinaryType> = None;
+                        let binary_data: Option<String> = None;
+                        let path: Option<String> = None;
+
+                        let (binary_type, binary_data, path): (
+                            Option<BinaryType>,
+                            Option<String>,
+                            Option<String>,
+                        ) = form
+                            .try_fold(
+                                (binary_type, binary_data, path),
+                                |(mut bt, mut bd, mut p), x| async move {
+                                    let field_name = x.name().to_owned();
+                                    let content_type = x.content_type();
+
+                                    if field_name == "path" {
+                                        let data = x
+                                            .stream()
+                                            .try_fold(Vec::new(), |mut vec, data| {
+                                                vec.put(data);
+                                                async move { Ok(vec) }
+                                            })
+                                            .await?;
+
+                                        p = match std::str::from_utf8(&data) {
+                                            Ok(d) => Some(d.to_string()),
+                                            Err(_) => None,
+                                        };
+                                    } else if field_name == "value" {
+                                        bt = match BinaryType::try_from(
+                                            content_type.unwrap_or_default(),
+                                        ) {
+                                            Ok(binary_type) => Some(binary_type),
+                                            Err(_) => None,
+                                        };
+                                        let data = x
+                                            .stream()
+                                            .try_fold(Vec::new(), |mut vec, data| {
+                                                vec.put(data);
+                                                async move { Ok(vec) }
+                                            })
+                                            .await?;
+                                        bd = Some(base64::encode(data));
+                                    }
+                                    Ok((bt, bd, p))
+                                },
+                            )
+                            .await
+                            .map_err(|_| warp::reject::custom(BadRequestRejection))?;
+
+                        let bd = BinaryData {
+                            binary: binary_data
+                                .ok_or_else(|| warp::reject::custom(BadRequestRejection))?,
+                            binary_type: binary_type
+                                .ok_or_else(|| warp::reject::custom(BadRequestRejection))?,
+                        };
+                        Ok::<_, Rejection>((
+                            Data::Binary(Some(bd)),
+                            path.ok_or(warp::reject::custom(BadRequestRejection))?,
+                        ))
+                    }))
+                .unify(),
         )
         .and(warp_sessions::request::with_session(
             session_store,
@@ -92,7 +168,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
         .and_then(
             move |path_params: SubmitDataPathParams,
                   query_params: SubmitDataQueryParams,
-                  (body_params, data): (SubmitDataBodyParams, Data),
+                  (data, path): (Data, String),
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R,
@@ -113,14 +189,14 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                 .map_err(CryptoErrorRejection)?;
                             let data_clone = data.clone();
                             let entry = data_clone
-                                .to_sealed_entry(body_params.path.clone(), key_algo)
+                                .to_sealed_entry(path.clone(), key_algo)
                                 .await
                                 .map_err(CryptoErrorRejection)?;
                             storer.create(entry).await.map_err(CryptoErrorRejection)?;
 
-                            if let Some(relay_url) = body_params.relay_url.clone() {
+                            if let Some(relay_url) = query_params.relay_url.clone() {
                                 relayer
-                                    .relay(body_params.path.clone(), relay_url)
+                                    .relay(path.clone(), relay_url)
                                     .await
                                     .map_err(|_| warp::reject::custom(RelayRejection))?;
                             }
@@ -132,12 +208,15 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                         name: "secure",
                                         value: TemplateValues::Secure(SecureTemplateValues {
                                             data: Some(data),
-                                            path: Some(body_params.path),
+                                            path: Some(path.clone()),
                                             token: Some(token.clone()),
                                             css: query_params.css,
                                             edit: query_params.edit,
-                                            relay_url: body_params.relay_url,
-                                            js_message: body_params.js_message,
+                                            data_type: query_params.data_type,
+                                            relay_url: query_params.relay_url,
+                                            js_message: query_params.js_message,
+                                            js_height_msg_prefix: query_params.js_height_msg_prefix,
+                                            is_binary_data: false,
                                         }),
                                     },
                                 )?,
@@ -152,42 +231,43 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
             },
         )
         .untuple_one()
-        .and_then(
-            move |reply: Rendered,
-                  path_params: SubmitDataPathParams,
-                  token: String,
-                  mut session_with_store: SessionWithStore<S>| async move {
-                session_with_store.cookie_options.path =
-                    Some(format!("/data/{}", path_params.token.clone()));
-                session_with_store.session.destroy();
-
-                let mut new_session = SessionWithStore::<S> {
-                    session: Session::new(),
-                    session_store: session_with_store.session_store.clone(),
-                    cookie_options: CookieOptions {
-                        cookie_name: "sid",
-                        cookie_value: None,
-                        max_age: Some(60),
-                        domain: None,
-                        path: Some(format!("/data/{}", token.clone())),
-                        secure: false,
-                        http_only: true,
-                        same_site: Some(SameSiteCookieOption::None),
-                    },
-                };
-
-                new_session
-                    .session
-                    .insert("token", token)
-                    .map_err(SerializationRejection)?;
-                Ok::<_, Rejection>((
-                    warp_sessions::reply::with_session(reply, session_with_store).await?,
-                    new_session,
-                ))
-            },
-        )
+        .and_then(build_session)
         .untuple_one()
         .and_then(warp_sessions::reply::with_session)
+}
+
+async fn build_session<T: Reply, S: SessionStore>(
+    reply: T,
+    path_params: SubmitDataPathParams,
+    token: String,
+    mut session_with_store: SessionWithStore<S>,
+) -> Result<(WithSession<T>, SessionWithStore<S>), Rejection> {
+    session_with_store.cookie_options.path = Some(format!("/data/{}", path_params.token.clone()));
+    session_with_store.session.destroy();
+
+    let mut new_session = SessionWithStore::<S> {
+        session: Session::new(),
+        session_store: session_with_store.session_store.clone(),
+        cookie_options: CookieOptions {
+            cookie_name: "sid",
+            cookie_value: None,
+            max_age: Some(60),
+            domain: None,
+            path: Some(format!("/data/{}", token.clone())),
+            secure: false,
+            http_only: true,
+            same_site: Some(SameSiteCookieOption::None),
+        },
+    };
+
+    new_session
+        .session
+        .insert("token", token)
+        .map_err(SerializationRejection)?;
+    Ok::<_, Rejection>((
+        warp_sessions::reply::with_session(reply, session_with_store).await?,
+        new_session,
+    ))
 }
 
 #[cfg(test)]
@@ -199,14 +279,18 @@ mod tests {
     use crate::routes::data::post;
     use crate::token::tests::MockTokenGenerator;
     use async_trait::async_trait;
+    use futures::Future;
     use http::StatusCode;
     use mockall::predicate::*;
     use mockall::*;
     use mongodb::bson::Document;
+    use redact_crypto::key::sodiumoxide::SodiumOxideSymmetricKeyAlgorithm;
+    use redact_crypto::nonce::sodiumoxide::SodiumOxideSymmetricNonce;
     use redact_crypto::{
         key::sodiumoxide::{SodiumOxideSymmetricKey, SodiumOxideSymmetricKeyBuilder},
-        ByteSource, CryptoError, Entry, EntryPath, HasBuilder, HasIndex, KeyBuilder, State, Storer,
-        SymmetricKey, SymmetricKeyBuilder, TypeBuilder, VectorByteSource,
+        ByteAlgorithm, ByteSource, CryptoError, Data, Entry, EntryPath, HasBuilder, HasIndex,
+        KeyBuilder, State, StorableType, Storer, SymmetricKey, SymmetricKeyBuilder, TypeBuilder,
+        VectorByteSource,
     };
     use serde::Serialize;
     use std::{
@@ -219,19 +303,19 @@ mod tests {
     pub Storer {}
     #[async_trait]
     impl Storer for Storer {
-    async fn get_indexed<T: HasBuilder + 'static>(
+    async fn get_indexed<T: StorableType>(
         &self,
         path: &str,
         index: &Option<Document>,
-    ) -> Result<Entry, CryptoError>;
-    async fn list_indexed<T: HasBuilder + Send + 'static>(
+    ) -> Result<Entry<T>, CryptoError>;
+    async fn list_indexed<T: StorableType>(
         &self,
         path: &str,
         skip: i64,
         page_size: i64,
         index: &Option<Document>,
-    ) -> Result<Vec<Entry>, CryptoError>;
-    async fn create(&self, path: EntryPath, value: State) -> Result<bool, CryptoError>;
+    ) -> Result<Vec<Entry<T>>, CryptoError>;
+    async fn create<T: StorableType>(&self, value: Entry<T>) -> Result<Entry<T>, CryptoError>;
     }
     impl Clone for Storer {
         fn clone(&self) -> Self;
@@ -321,20 +405,45 @@ mod tests {
                 path == ".keys.encryption.default."
                     && *index == Some(SymmetricKey::get_index().unwrap())
             })
-            .returning(|_, _| {
+            .returning(move |_, _| {
+                let sosk = SodiumOxideSymmetricKey::new();
                 let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
                     SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
                 ));
-                let sosk = SodiumOxideSymmetricKey::new();
-                Ok(Entry {
-                    path: ".keys.encryption.default.".to_owned(),
-                    value: State::Unsealed {
-                        builder,
-                        bytes: ByteSource::Vector(VectorByteSource::new(sosk.key.as_ref())),
+                Ok(Entry::new(
+                    ".keys.encryption.default.".to_owned(),
+                    builder,
+                    State::Unsealed {
+                        bytes: ByteSource::Vector(VectorByteSource::new(Some(sosk.key.as_ref()))),
                     },
-                })
+                ))
             });
-        storer.expect_create().times(1).returning(|_, _| Ok(true));
+        storer.expect_create::<Data>().returning(|_: Entry<Data>| {
+            let sosk = SodiumOxideSymmetricKey::new();
+            let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
+                SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
+            ));
+            let key_entry = Entry::<SodiumOxideSymmetricKey>::new(
+                ".keys.encryption.default.".to_owned(),
+                builder,
+                State::Unsealed {
+                    bytes: ByteSource::Vector(VectorByteSource::new(Some(sosk.key.as_ref()))),
+                },
+            );
+            let algorithm =
+                ByteAlgorithm::SodiumOxideSymmetricKey(SodiumOxideSymmetricKeyAlgorithm {
+                    key: Box::new((key_entry)),
+                    nonce: SodiumOxideSymmetricNonce::new(),
+                });
+            Ok(Entry::new(
+                ".testKey.".to_owned(),
+                builder,
+                State::Sealed {
+                    ciphertext: ByteSource::Vector(VectorByteSource::new(Some("qew".as_ref()))),
+                    algorithm,
+                },
+            ))
+        });
 
         let mut token_generator = MockTokenGenerator::new();
         token_generator.expect_generate_token().returning(|| {
@@ -412,19 +521,47 @@ mod tests {
                     && *index == Some(SymmetricKey::get_index().unwrap())
             })
             .returning(|_, _| {
+                let sosk = SodiumOxideSymmetricKey::new();
                 let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
                     SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
                 ));
-                let sosk = SodiumOxideSymmetricKey::new();
-                Ok(Entry {
-                    path: ".keys.encryption.default.".to_owned(),
-                    value: State::Unsealed {
-                        builder,
-                        bytes: ByteSource::Vector(VectorByteSource::new(sosk.key.as_ref())),
+                Ok(Entry::new(
+                    ".keys.encryption.default.".to_owned(),
+                    builder,
+                    State::Unsealed {
+                        bytes: ByteSource::Vector(VectorByteSource::new(Some(sosk.key.as_ref()))),
                     },
-                })
+                ))
             });
-        storer.expect_create().times(1).returning(|_, _| Ok(true));
+        storer
+            .expect_create::<Data>()
+            .times(1)
+            .returning(|_: Entry<Data>| {
+                let sosk = SodiumOxideSymmetricKey::new();
+                let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
+                    SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
+                ));
+                let key_entry = Entry::<SodiumOxideSymmetricKey>::new(
+                    ".keys.encryption.default.".to_owned(),
+                    builder,
+                    State::Unsealed {
+                        bytes: ByteSource::Vector(VectorByteSource::new(Some(sosk.key.as_ref()))),
+                    },
+                );
+                let algorithm =
+                    ByteAlgorithm::SodiumOxideSymmetricKey(SodiumOxideSymmetricKeyAlgorithm {
+                        key: Box::new((key_entry)),
+                        nonce: SodiumOxideSymmetricNonce::new(),
+                    });
+                Ok(Entry::new(
+                    ".testKey.".to_owned(),
+                    builder,
+                    State::Sealed {
+                        ciphertext: ByteSource::Vector(VectorByteSource::new(Some("qew".as_ref()))),
+                        algorithm,
+                    },
+                ))
+            });
 
         let mut token_generator = MockTokenGenerator::new();
         token_generator.expect_generate_token().returning(|| {
@@ -449,11 +586,14 @@ mod tests {
 
         let res = warp::test::request()
             .method("POST")
-            .path("/data/E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D")
+            .path(&format!(
+                "/data/E0AE2C1C9AA2DB85DFA2FF6B4AAC7A5E51FFDAA3948BECEC353561D513E59A9D?relay_url={}&js_message={}",
+                relay_url, js_message
+            ))
             .header("cookie", "sid=testSID")
             .body(format!(
-                "relay_url={}&path={}&js_message={}&value_type=string&value=qew&submit=Submit",
-                relay_url, data_path, js_message
+                "value_type=string&value=qew&submit=Submit&path={}",
+                data_path
             ))
             .reply(&submit_data)
             .await;

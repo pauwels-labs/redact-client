@@ -6,7 +6,7 @@
   </head>
   <body>
     {{ #if Secure.edit }}
-    <form id="form" action="/data/{{ Secure.token }}?css={{ Secure.css }}&edit={{ Secure.edit }}" method="POST">
+<form id="form" action="/data/{{ Secure.token }}?css={{ Secure.css }}&edit={{ Secure.edit }}{{ #if Secure.js_height_msg_prefix }}&js_height_msg_prefix={{ Secure.js_height_msg_prefix }}{{ /if }}{{ #if Secure.js_message }}&js_message={{ Secure.js_message }}{{ /if }}{{ #if Secure.relay_url }}&relay_url={{ Secure.relay_url }}{{ /if }}" method="POST" {{ #if Secure.is_binary_data }}enctype="multipart/form-data"{{/if}}>
       {{ #if Secure.relay_url }}
       <input type="hidden" value="{{ Secure.relay_url }}" id="relay_url" name="relay_url">
       {{ /if }}
@@ -18,43 +18,77 @@
       <input type="submit" value="Submit" name="submit" id="submit">
     </form>
     {{ else }}
-      <p>
         {{ data_display Secure.data }}
-      </p>
     {{ /if }}
 
-
 	<script>
+
+
+	{{ #if Secure.js_height_msg_prefix }}
+		var elem = document.getElementById('data');
+		var video_elem = document.getElementById('data-video');
+
+		if (elem != null) {
+		  elem.addEventListener("load", function() {
+			var message = atob("{{ Secure.js_height_msg_prefix }}") + elem.clientHeight;
+			window.parent.postMessage(btoa(message), "*");
+		  });
+		} else if (video_elem != null) {
+		  var message_video = atob("{{ Secure.js_height_msg_prefix }}") + video_elem.clientHeight;
+		  window.parent.postMessage(btoa(message_video), "*");
+		  console.log(message_video);
+		}
+	{{/if}}
+
 	{{ #if Secure.js_message }}
 	  {{ #if Secure.edit }}
-      document.getElementById("form").addEventListener('submit', functSubmit);
-      function functSubmit(event) {
-		const formTarget = event.target;
-		var form = new FormData(formTarget);
+		document.getElementById("form").addEventListener('submit', functSubmit);
 
-		var formBody = [];
-		for (let [name, value] of form) {
-		  var encodedKey = encodeURIComponent(name);
-		  var encodedValue = encodeURIComponent(value);
-		  formBody.push(encodedKey + "=" + encodedValue);
-		}
-		formBody = formBody.join("&");
+		{{#if Secure.is_binary_data}}
+			document.getElementById("form").enctype = 'multipart/form-data';
+			function functSubmit(event) {
+				const formTarget = event.target;
+				var form = new FormData(formTarget);
+				fetch(formTarget.action, {
+					method: formTarget.method,
+					body: form
+				})
+				.then((res) => {
+				  window.parent.postMessage("{{ Secure.js_message }}", "*");
+				  return res.text();
+				});
+				// Prevent the default form submit
+				event.preventDefault();
+			  }
+		{{ else }}
+		  function functSubmit(event) {
+			const formTarget = event.target;
+			var form = new FormData(formTarget);
 
-		fetch(formTarget.action, {
-		  method: formTarget.method,
-		  headers: {
-    		'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
-  		  },
-  		  body: formBody
-		})
-		.then((res) => {
-		  	window.parent.postMessage("{{ Secure.js_message }}", "*");
-		  return res.text();
-		});
+			var formBody = [];
+			for (let [name, value] of form) {
+			  var encodedKey = encodeURIComponent(name);
+			  var encodedValue = encodeURIComponent(value);
+			  formBody.push(encodedKey + "=" + encodedValue);
+			}
+			formBody = formBody.join("&");
 
-		// Prevent the default form submit
-		event.preventDefault();
-	  }
+			fetch(formTarget.action, {
+			  method: formTarget.method,
+			  headers: {
+				'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+			  },
+			  body: formBody
+			})
+			.then((res) => {
+				window.parent.postMessage("{{ Secure.js_message }}", "*");
+			  return res.text();
+			});
+
+			// Prevent the default form submit
+			event.preventDefault();
+		  }
+		{{/if}}
 	  {{/if}}
 	{{/if}}
 

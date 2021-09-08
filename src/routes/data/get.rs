@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::routes::error::QueryParamValidationRejection;
 use crate::{
     render::{
@@ -150,7 +152,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
     session_store: S,
     render_engine: R,
     token_generator: T,
-    storer: H,
+    storer: Arc<H>,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::any()
         .and(
@@ -180,7 +182,7 @@ pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R,
-                  storer: H| async move {
+                  storer: Arc<H>| async move {
                 if let Some(session_token) = session_with_store.session.get::<String>("token") {
                     if session_token != path_params.token {
                         Err(warp::reject::custom(IframeTokensDoNotMatchRejection))

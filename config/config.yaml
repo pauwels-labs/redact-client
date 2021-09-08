@@ -2,65 +2,90 @@ certificate:
   filepath: "keys/private/tmpcert"
 storage:
   url: http://localhost:8081
-crypto:
-  encryption:
-    default:
-      path: ".keys.encryption.default."
-      builder:
-        t: "Key"
-        c:
-          t: "Symmetric"
-          c:
-            t: "SodiumOxide"
-            c: {}
-      value:
-        t: "Unsealed"
-        c:
-          bytes:
-            t: "Fs"
-            c:
-              path:
-                path: "keys/private/.keys.encryption.default."
-                stem: ".keys.encryption.default."
+keys:
   user:
-    key:
-      path: ".keys.user.default."
-      builder:
-        t: "Key"
-        c:
-          t: "Asymmetric"
+    encryption:
+      symmetric:
+        default:
+          path: ".keys.user.encryption.symmetric.default."
+          builder:
+            t: "Key"
+            c:
+              t: "Symmetric"
+              c:
+                t: "SodiumOxide"
+                c: {}
+          value:
+            t: "Unsealed"
+            c:
+              bytes:
+                t: "Fs"
+                c:
+                  path:
+                    path: "keys/private/.keys.user.encryption.symmetric.default."
+                    stem: ".keys.user.encryption.symmetric.default."
+      asymmetric:
+        default:
+          path: ".keys.user.encryption.asymmetric.default."
+          builder:
+            t: "Key"
+            c:
+              t: "Asymmetric"
+              c:
+                t: "Secret"
+                c:
+                  t: "SodiumOxideCurve25519"
+                  c: {}
+          value:
+            t: "Unsealed"
+            c:
+              bytes:
+                t: "Fs"
+                c:
+                  path:
+                    path: "keys/private/.keys.user.encryption.asymmetric.default."
+                    stem: ".keys.user.encryption.asymmetric.default."
+    signing:
+      root:
+        path: ".keys.user.signing.root."
+        builder:
+          t: "Key"
           c:
-            t: "Secret"
+            t: "Asymmetric"
             c:
-              t: "SodiumOxideCurve25519"
-              c: {}
-      value:
-        t: "Unsealed"
-        c:
-          bytes:
-            t: "Fs"
-            c:
-              path:
-                path: "keys/private/.keys.user.default."
-                stem: ".keys.user.default."
+              t: "Secret"
+              c:
+                t: "SodiumOxideEd25519"
+                c: {}
+        value:
+          t: "Unsealed"
+          c:
+            bytes:
+              t: "Fs"
+              c:
+                path:
+                  path: "keys/private/.keys.user.signing.root."
+                  stem: ".keys.user.signing.root."
   client:
-    key:
-      path: ".keys.client.default."
-      builder:
-        t: "Key"
-        c:
-          t: "Asymmetric"
-          c:
-            t: "Secret"
+    encryption:
+      asymmetric:
+        tls:
+          path: ".keys.client.encryption.asymmetric.tls."
+          builder:
+            t: "Key"
             c:
-              t: "SodiumOxideCurve25519"
-              c: {}
-      value:
-        t: "Unsealed"
-        c:
-          bytes:
-            t: "Fs"
+              t: "Asymmetric"
+              c:
+                t: "Secret"
+                c:
+                  t: "SodiumOxideCurve25519"
+                  c: {}
+          value:
+            t: "Unsealed"
             c:
-              path:
-                path: "keys/private/.keys.client.default."
-                stem: ".keys.client.default."
+              bytes:
+                t: "Fs"
+                c:
+                  path:
+                    path: "keys/private/.keys.client.encryption.asymmetric.tls."
+                    stem: ".keys.client.encryption.asymmetric.tls."

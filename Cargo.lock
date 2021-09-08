@@ -491,10 +491,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "const-oid"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44c32f031ea41b4291d695026c023b95d59db2d8a2c7640800ed56bc8f510f22"
+
+[[package]]
+name = "const-oid"
+version = "0.6.0"
+source = "git+https://github.com/ajpauwels/utils?rev=9f303824463e8ca93d4cacc869aea6196d97eb36#9f303824463e8ca93d4cacc869aea6196d97eb36"
+
+[[package]]
 name = "constant_time_eq"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
+
+[[package]]
+name = "cookie-factory"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "396de984970346b0d9e93d1415082923c679e5ae5c3ee3dcbd104f5610af126b"
 
 [[package]]
 name = "core-foundation"
@@ -517,6 +534,15 @@ name = "cpufeatures"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66c99696f6c9dd7f35d486b9d04d7e6e202aa3e8c40d553f2fdf5e7e0c6a71ef"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "cpufeatures"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95059428f66df56b63431fdb4e1947ed2190586af5c5a8a8b71122bdf5a7f469"
 dependencies = [
  "libc",
 ]
@@ -604,6 +630,35 @@ dependencies = [
  "darling_core",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "der"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31e21d2d0f22cde6e88694108429775c0219760a07779bf96503b434a03d7412"
+dependencies = [
+ "const-oid 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "der"
+version = "0.4.1"
+source = "git+https://github.com/ajpauwels/utils?rev=9f303824463e8ca93d4cacc869aea6196d97eb36#9f303824463e8ca93d4cacc869aea6196d97eb36"
+dependencies = [
+ "const-oid 0.6.0 (git+https://github.com/ajpauwels/utils?rev=9f303824463e8ca93d4cacc869aea6196d97eb36)",
+ "der_derive",
+]
+
+[[package]]
+name = "der_derive"
+version = "0.4.0"
+source = "git+https://github.com/ajpauwels/utils?rev=9f303824463e8ca93d4cacc869aea6196d97eb36#9f303824463e8ca93d4cacc869aea6196d97eb36"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+ "synstructure",
 ]
 
 [[package]]
@@ -1014,7 +1069,7 @@ dependencies = [
  "headers-core",
  "http",
  "mime",
- "sha-1 0.9.6",
+ "sha-1 0.9.8",
  "time",
 ]
 
@@ -1361,9 +1416,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.98"
+version = "0.2.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "320cfe77175da3a483efed4bc0adc1968ca050b098ce4f2f1c13a56626128790"
+checksum = "3cb00336871be5ed2c8ed44b60ae9959dc5b9f08539422ed43f09e34ecaeba21"
 
 [[package]]
 name = "libsodium-sys"
@@ -2118,6 +2173,9 @@ dependencies = [
  "async-trait",
  "base64 0.13.0",
  "bson",
+ "chrono",
+ "cookie-factory",
+ "der 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures",
  "handlebars",
  "http",
@@ -2134,13 +2192,16 @@ dependencies = [
  "reqwest 0.11.4",
  "serde 1.0.126",
  "serde_json",
+ "sha-1 0.9.8",
  "sha2 0.9.5",
  "sodiumoxide",
+ "spki",
  "thiserror",
  "tokio 1.8.1",
  "uuid",
  "warp",
  "warp-sessions",
+ "x509",
 ]
 
 [[package]]
@@ -2156,21 +2217,27 @@ dependencies = [
 [[package]]
 name = "redact-crypto"
 version = "0.1.0"
-source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=12b54f4cffe7019759152b06ef89afb4c807c9c9#12b54f4cffe7019759152b06ef89afb4c807c9c9"
+source = "git+https://github.com/pauwels-labs/redact-crypto?rev=37e975c40d57cc976d6298699650b7a6f57ce978#37e975c40d57cc976d6298699650b7a6f57ce978"
 dependencies = [
  "async-recursion",
  "async-trait",
  "base64 0.13.0",
+ "cookie-factory",
+ "der 0.4.1 (git+https://github.com/ajpauwels/utils?rev=9f303824463e8ca93d4cacc869aea6196d97eb36)",
  "futures",
  "hex",
+ "mockall",
  "mongodb",
  "once_cell",
  "reqwest 0.11.4",
  "ring",
  "serde 1.0.126",
+ "serde_bytes",
  "serde_json",
  "sodiumoxide",
+ "spki",
  "uuid",
+ "x509",
 ]
 
 [[package]]
@@ -2544,13 +2611,13 @@ dependencies = [
 
 [[package]]
 name = "sha-1"
-version = "0.9.6"
+version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c4cfa741c5832d0ef7fab46cabed29c2aae926db0b11bb2069edd8db5e64e16"
+checksum = "99cd6713db3cf16b6c84e06321e049a9b9f699826e16096d23bbcc44d15d51a6"
 dependencies = [
  "block-buffer 0.9.0",
  "cfg-if 1.0.0",
- "cpufeatures",
+ "cpufeatures 0.2.1",
  "digest 0.9.0",
  "opaque-debug 0.3.0",
 ]
@@ -2575,7 +2642,7 @@ checksum = "b362ae5752fd2137731f9fa25fd4d9058af34666ca1966fb969119cc35719f12"
 dependencies = [
  "block-buffer 0.9.0",
  "cfg-if 1.0.0",
- "cpufeatures",
+ "cpufeatures 0.1.5",
  "digest 0.9.0",
  "opaque-debug 0.3.0",
 ]
@@ -2636,6 +2703,15 @@ name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
+
+[[package]]
+name = "spki"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "987637c5ae6b3121aba9d513f869bd2bff11c4cc086c22473befd6649c0bd521"
+dependencies = [
+ "der 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "static_assertions"
@@ -3027,7 +3103,7 @@ dependencies = [
  "input_buffer",
  "log",
  "rand 0.8.4",
- "sha-1 0.9.6",
+ "sha-1 0.9.8",
  "url",
  "utf-8",
 ]
@@ -3440,6 +3516,16 @@ checksum = "d59cefebd0c892fa2dd6de581e937301d8552cb44489cdff035c6187cb63fa5e"
 dependencies = [
  "winapi 0.2.8",
  "winapi-build",
+]
+
+[[package]]
+name = "x509"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca3cec94c3999f31341553f358ef55f65fc031291a022cd42ec0ce7219560c76"
+dependencies = [
+ "chrono",
+ "cookie-factory",
 ]
 
 [[package]]

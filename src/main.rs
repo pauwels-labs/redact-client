@@ -8,11 +8,18 @@ pub mod token;
 
 use crate::error_handler::handle_rejection;
 use crate::relayer::MutualTLSRelayer;
+use chrono::prelude::*;
 use redact_config::Configurator;
-use redact_crypto::{Entry, RedactStorer, SecretAsymmetricKey, SymmetricKey};
+use redact_crypto::{
+    key::sodiumoxide::{
+        SodiumOxideCurve25519SecretAsymmetricKey, SodiumOxideEd25519PublicAsymmetricKey,
+        SodiumOxideEd25519SecretAsymmetricKey,
+    },
+    Entry, HasPublicKey, RedactStorer,
+};
 use render::HandlebarsRenderer;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::File, io::Write, sync::Arc};
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
@@ -65,19 +72,47 @@ async fn main() {
     let storage_url = config.get_str("storage.url").unwrap();
 
     // Get the bootstrap key from config
-    let storer = RedactStorer::new(&storage_url);
-    let user_akey: Entry<SecretAsymmetricKey> =
-        bootstrap::setup_entry(&config, "crypto.user.key", &storer)
+    let storer = Arc::new(RedactStorer::new(&storage_url));
+    let user_signing_root_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
+        bootstrap::setup_entry(&config, "keys.user.signing.root", &storer)
             .await
             .unwrap();
-    let client_akey: Entry<SecretAsymmetricKey> =
-        bootstrap::setup_entry(&config, "crypto.client.key", &storer)
+    let user_signing_root_key = user_signing_root_key_entry.resolve().await.unwrap();
+    let user_encryption_root_key_entry: Entry<SodiumOxideCurve25519SecretAsymmetricKey> =
+        bootstrap::setup_entry(&config, "keys.user.encryption.asymmetric.default", &storer)
             .await
             .unwrap();
-    let default_skey: Entry<SymmetricKey> =
-        bootstrap::setup_entry(&config, "crypto.encryption.default", &storer)
-            .await
-            .unwrap();
+    let user_encryption_root_key = user_encryption_root_key_entry.take_resolve().await.unwrap();
+
+    let root_signing_cert = bootstrap::setup_cert::<_, SodiumOxideEd25519PublicAsymmetricKey>(
+        user_signing_root_key,
+        None,
+        "pauwels",
+        None,
+        Utc::now(),
+        Utc.ymd(2031, 1, 1).and_hms(0, 0, 0),
+        true,
+    )
+    .unwrap();
+    let mut signing_cert_file = File::create("certs/signing-cert.raw").unwrap();
+    signing_cert_file
+        .write_all(root_signing_cert.as_slice())
+        .unwrap();
+
+    let root_encryption_cert = bootstrap::setup_cert(
+        user_signing_root_key,
+        Some(&user_encryption_root_key.public_key().unwrap()),
+        "pauwels",
+        Some("pauwels-encryption"),
+        Utc::now(),
+        Utc.ymd(2031, 1, 1).and_hms(0, 0, 0),
+        false,
+    )
+    .unwrap();
+    let mut encryption_cert_file = File::create("certs/encryption-cert.raw").unwrap();
+    encryption_cert_file
+        .write_all(root_encryption_cert.as_slice())
+        .unwrap();
 
     // Create an in-memory session store
     let session_store = MemoryStore::new();

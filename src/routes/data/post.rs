@@ -10,7 +10,7 @@ use crate::{
 };
 use redact_crypto::{Data, Storer, SymmetricKey, ToEntry};
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
+use std::{convert::TryFrom, sync::Arc};
 use warp::{Filter, Rejection, Reply};
 use warp_sessions::{CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore};
 
@@ -59,7 +59,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
     session_store: S,
     render_engine: R,
     token_generator: T,
-    storer: H,
+    storer: Arc<H>,
     relayer: Q,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::any()
@@ -96,7 +96,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                   session_with_store: SessionWithStore<S>,
                   token: String,
                   render_engine: R,
-                  storer: H,
+                  storer: Arc<H>,
                   relayer: Q| async move {
                 match session_with_store.session.get("token") {
                     Some::<String>(session_token) => {
@@ -108,7 +108,7 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                                 .await
                                 .map_err(CryptoErrorRejection)?;
                             let key_algo = key_entry
-                                .to_byte_algorithm(None)
+                                .to_symmetric_byte_algorithm(None)
                                 .await
                                 .map_err(CryptoErrorRejection)?;
                             let data_clone = data.clone();

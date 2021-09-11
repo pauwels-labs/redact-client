@@ -60,13 +60,7 @@ struct SubmitDataQueryParams {
     js_height_msg_prefix: Option<String>,
 }
 
-pub fn submit_data<
-    S: SessionStore,
-    R: Renderer,
-    T: TokenGenerator,
-    H: Storer,
-    Q: Relayer,
->(
+pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q: Relayer>(
     session_store: S,
     render_engine: R,
     token_generator: T,

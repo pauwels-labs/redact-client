@@ -11,14 +11,20 @@ use sha1::{Digest, Sha1};
 use std::convert::TryInto;
 use x509::Extension;
 
+pub struct DistinguishedName<'a> {
+    pub o: &'a str,
+    pub ou: &'a str,
+    pub cn: &'a str,
+}
+
 pub fn setup_cert<
     SK: Signer + HasPublicKey + HasByteSource + HasAlgorithmIdentifier,
     BPK: HasByteSource + HasAlgorithmIdentifier,
 >(
     issuer_key: &SK,
     subject_key: Option<&BPK>,
-    issuer_cn: &str,
-    subject_cn: Option<&str>,
+    issuer_dn: &DistinguishedName,
+    subject_dn: Option<&DistinguishedName>,
     not_before: DateTime<Utc>,
     not_after: DateTime<Utc>,
     is_ca: bool,
@@ -57,15 +63,25 @@ pub fn setup_cert<
     });
 
     // Define the issuer and subject RDNs to be the same (self-signed)
-    let issuer_rdn: [x509::RelativeDistinguishedName; 1] =
-        [x509::RelativeDistinguishedName::common_name(issuer_cn)];
-    let subject_rdn: [x509::RelativeDistinguishedName; 1] =
-        [x509::RelativeDistinguishedName::common_name(
-            match subject_cn {
-                Some(cn) => cn,
-                None => issuer_cn,
-            },
-        )];
+    let issuer_rdn: [x509::RelativeDistinguishedName; 3] = [
+        x509::RelativeDistinguishedName::organization(issuer_dn.o),
+        x509::RelativeDistinguishedName::organizational_unit(issuer_dn.ou),
+        x509::RelativeDistinguishedName::common_name(issuer_dn.cn),
+    ];
+    let subject_rdn: [x509::RelativeDistinguishedName; 3] = [
+        x509::RelativeDistinguishedName::organization(match subject_dn {
+            Some(dn) => dn.o,
+            None => issuer_dn.o,
+        }),
+        x509::RelativeDistinguishedName::organizational_unit(match subject_dn {
+            Some(dn) => dn.ou,
+            None => issuer_dn.ou,
+        }),
+        x509::RelativeDistinguishedName::common_name(match subject_dn {
+            Some(dn) => dn.cn,
+            None => issuer_dn.cn,
+        }),
+    ];
 
     // Define x509v3 extensions
     let mut sha1hasher = Sha1::new();

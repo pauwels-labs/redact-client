@@ -6,9 +6,9 @@ mod render;
 mod routes;
 pub mod token;
 
-use crate::error_handler::handle_rejection;
 use crate::relayer::MutualTLSRelayer;
-use chrono::prelude::*;
+use crate::{bootstrap::DistinguishedName, error_handler::handle_rejection};
+use chrono::{prelude::*, Duration};
 use redact_config::Configurator;
 use redact_crypto::{
     key::sodiumoxide::{
@@ -66,56 +66,113 @@ async fn main() {
     let render_engine = HandlebarsRenderer::new(template_mapping).unwrap();
 
     // Create a relay client which supports mutual TLS
-    let relayer = MutualTLSRelayer::new(config.get_str("certificate.filepath").unwrap()).unwrap();
+    let relayer =
+        MutualTLSRelayer::new(config.get_str("relayer.certificate.filepath").unwrap()).unwrap();
 
     // Get storage handle
     let storage_url = config.get_str("storage.url").unwrap();
 
     // Get the bootstrap key from config
     let storer_shared = Arc::new(RedactStorer::new(&storage_url));
-    let user_signing_root_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
-        bootstrap::setup_entry(&config, "keys.user.signing.root", &storer_shared)
+    let root_signing_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
+        bootstrap::setup_entry(&config, "keys.signing.root", &*storer_shared)
             .await
             .unwrap();
-    let user_signing_root_key = user_signing_root_key_entry.resolve().await.unwrap();
-    let user_encryption_root_key_entry: Entry<SodiumOxideCurve25519SecretAsymmetricKey> =
-        bootstrap::setup_entry(
-            &config,
-            "keys.user.encryption.asymmetric.default",
-            &storer_shared,
-        )
-        .await
-        .unwrap();
-    let user_encryption_root_key = user_encryption_root_key_entry.take_resolve().await.unwrap();
+    let root_signing_key = root_signing_key_entry.resolve().await.unwrap();
+    let tls_key_entry: Entry<SodiumOxideCurve25519SecretAsymmetricKey> =
+        bootstrap::setup_entry(&config, "keys.encryption.asymmetric.tls", &*storer_shared)
+            .await
+            .unwrap();
+    let tls_key = tls_key_entry.take_resolve().await.unwrap();
 
+    let signing_cert_o = config.get_str("certificates.signing.root.o").unwrap();
+    let signing_cert_ou = config.get_str("certificates.signing.root.ou").unwrap();
+    let signing_cert_cn = config.get_str("certificates.signing.root.cn").unwrap();
+    let signing_cert_dn = DistinguishedName {
+        o: &signing_cert_o,
+        ou: &signing_cert_ou,
+        cn: &signing_cert_cn,
+    };
+    let not_before = Utc::now();
+    let not_after = not_before
+        + Duration::days(
+            config
+                .get_int("certificates.signing.root.expires_in")
+                .unwrap(),
+        );
     let root_signing_cert = bootstrap::setup_cert::<_, SodiumOxideEd25519PublicAsymmetricKey>(
-        user_signing_root_key,
+        root_signing_key,
         None,
-        "pauwels",
+        &signing_cert_dn,
         None,
-        Utc::now(),
-        Utc.ymd(2031, 1, 1).and_hms(0, 0, 0),
+        not_before,
+        not_after,
         true,
     )
     .unwrap();
-    let mut signing_cert_file = File::create("certs/signing-cert.raw").unwrap();
-    signing_cert_file
-        .write_all(root_signing_cert.as_slice())
+    let mut root_signing_cert_file = File::create(
+        config
+            .get_str("certificates.signing.root.filepath")
+            .unwrap(),
+    )
+    .unwrap();
+    root_signing_cert_file
+        .write_all(b"-----BEGIN CERTIFICATE-----\n")
+        .unwrap();
+    base64::encode(root_signing_cert)
+        .as_bytes()
+        .chunks(64)
+        .for_each(|chunk| {
+            root_signing_cert_file.write_all(chunk).unwrap();
+            root_signing_cert_file.write_all(b"\n").unwrap();
+        });
+    root_signing_cert_file
+        .write_all(b"-----END CERTIFICATE-----\n")
         .unwrap();
 
-    let root_encryption_cert = bootstrap::setup_cert(
-        user_signing_root_key,
-        Some(&user_encryption_root_key.public_key().unwrap()),
-        "pauwels",
-        Some("pauwels-encryption"),
-        Utc::now(),
-        Utc.ymd(2031, 1, 1).and_hms(0, 0, 0),
+    let encryption_cert_o = config.get_str("certificates.encryption.tls.o").unwrap();
+    let encryption_cert_ou = config.get_str("certificates.encryption.tls.ou").unwrap();
+    let encryption_cert_cn = config.get_str("certificates.encryption.tls.cn").unwrap();
+    let encryption_cert_dn = DistinguishedName {
+        o: &encryption_cert_o,
+        ou: &encryption_cert_ou,
+        cn: &encryption_cert_cn,
+    };
+    let not_before = Utc::now();
+    let not_after = not_before
+        + Duration::days(
+            config
+                .get_int("certificates.encryption.tls.expires_in")
+                .unwrap(),
+        );
+    let tls_cert = bootstrap::setup_cert(
+        root_signing_key,
+        Some(&tls_key.public_key().unwrap()),
+        &signing_cert_dn,
+        Some(&encryption_cert_dn),
+        not_before,
+        not_after,
         false,
     )
     .unwrap();
-    let mut encryption_cert_file = File::create("certs/encryption-cert.raw").unwrap();
-    encryption_cert_file
-        .write_all(root_encryption_cert.as_slice())
+    let mut tls_cert_file = File::create(
+        config
+            .get_str("certificates.encryption.tls.filepath")
+            .unwrap(),
+    )
+    .unwrap();
+    tls_cert_file
+        .write_all(b"-----BEGIN CERTIFICATE-----\n")
+        .unwrap();
+    base64::encode(tls_cert)
+        .as_bytes()
+        .chunks(64)
+        .for_each(|chunk| {
+            tls_cert_file.write_all(chunk).unwrap();
+            tls_cert_file.write_all(b"\n").unwrap();
+        });
+    tls_cert_file
+        .write_all(b"-----END CERTIFICATE-----\n")
         .unwrap();
 
     // Create an in-memory session store

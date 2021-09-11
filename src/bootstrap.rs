@@ -62,7 +62,7 @@ pub fn setup_cert<
             .map_err(|source| ClientError::SourceError { source })?,
     });
 
-    // Define the issuer and subject RDNs to be the same (self-signed)
+    // Define the issuer and subject RDNs
     let issuer_rdn: [x509::RelativeDistinguishedName; 3] = [
         x509::RelativeDistinguishedName::organization(issuer_dn.o),
         x509::RelativeDistinguishedName::organizational_unit(issuer_dn.ou),

@@ -1,6 +1,6 @@
 relayer:
   certificate:
-    filepath: "keys/private/tmpcert"
+    filepath: "keys/private/client-tls.p12.pem"
 certificates:
   signing:
     root:
@@ -9,10 +9,9 @@ certificates:
       cn: "root"
       expires_in: 365
       filepath: "certs/root-signing.pem"
-  encryption:
     tls:
       o: "pauwels"
-      ou: "encryption"
+      ou: "tls"
       cn: "laptop"
       expires_in: 365
       filepath: "certs/client-tls.pem"
@@ -39,27 +38,6 @@ keys:
                 path:
                   path: "keys/private/.keys.encryption.symmetric.default."
                   stem: ".keys.encryption.symmetric.default."
-    asymmetric:
-      tls:
-        path: ".keys.encryption.asymmetric.tls."
-        builder:
-          t: "Key"
-          c:
-            t: "Asymmetric"
-            c:
-              t: "Secret"
-              c:
-                t: "SodiumOxideCurve25519"
-                c: {}
-        value:
-          t: "Unsealed"
-          c:
-            bytes:
-              t: "Fs"
-              c:
-                path:
-                  path: "keys/private/.keys.encryption.asymmetric.tls."
-                  stem: ".keys.encryption.asymmetric.tls."
   signing:
     root:
       path: ".keys.signing.root."
@@ -81,3 +59,23 @@ keys:
               path:
                 path: "keys/private/.keys.signing.root."
                 stem: ".keys.signing.root."
+    tls:
+      path: ".keys.signing.tls."
+      builder:
+        t: "Key"
+        c:
+          t: "Asymmetric"
+          c:
+            t: "Secret"
+            c:
+              t: "SodiumOxideEd25519"
+              c: {}
+      value:
+        t: "Unsealed"
+        c:
+          bytes:
+            t: "Fs"
+            c:
+              path:
+                path: "keys/private/.keys.signing.tls."
+                stem: ".keys.signing.tls."

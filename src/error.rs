@@ -10,7 +10,10 @@ pub enum ClientError {
     },
 
     /// Error occurred when trying to verify a domain
-    DomainParsingError { kind: addr::error::Kind, input: String },
+    DomainParsingError {
+        kind: addr::error::Kind,
+        input: String,
+    },
 
     /// Error happened with the config
     ConfigError { source: redact_config::ConfigError },
@@ -20,6 +23,12 @@ pub enum ClientError {
 
     /// Error happened when handling a source
     SourceError { source: redact_crypto::SourceError },
+
+    /// Error happened during X509 serialization
+    X509SerializationError { source: cookie_factory::GenError },
+
+    /// Error happened during random number generation
+    RandError { source: rand::Error },
 }
 
 impl Error for ClientError {
@@ -30,6 +39,8 @@ impl Error for ClientError {
             ClientError::ConfigError { ref source } => Some(source),
             ClientError::CryptoError { ref source } => Some(source),
             ClientError::SourceError { ref source } => Some(source),
+            ClientError::X509SerializationError { ref source } => Some(source),
+            ClientError::RandError { ref source } => Some(source),
         }
     }
 }
@@ -40,8 +51,15 @@ impl Display for ClientError {
             ClientError::InternalError { .. } => {
                 write!(f, "Internal error occurred")
             }
-            ClientError::DomainParsingError { ref kind, ref input } => {
-                write!(f, "Error occurred during domain parsing ({:?}) on input: {}", kind, input)
+            ClientError::DomainParsingError {
+                ref kind,
+                ref input,
+            } => {
+                write!(
+                    f,
+                    "Error occurred during domain parsing ({:?}) on input: {}",
+                    kind, input
+                )
             }
             ClientError::ConfigError { .. } => {
                 write!(f, "Error occured when handling config")
@@ -51,6 +69,12 @@ impl Display for ClientError {
             }
             ClientError::SourceError { .. } => {
                 write!(f, "Error occured while handling a source")
+            }
+            ClientError::X509SerializationError { .. } => {
+                write!(f, "Error occured while serializing to x509")
+            }
+            ClientError::RandError { .. } => {
+                write!(f, "Error occured during random number generation")
             }
         }
     }

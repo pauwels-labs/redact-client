@@ -1,3 +1,4 @@
+use crate::routes::error::{QueryParamValidationRejection, RelayRejection};
 use crate::routes::{
     BadRequestRejection, IframeTokensDoNotMatchRejection, SessionTokenNotFoundRejection,
 };
@@ -5,7 +6,6 @@ use serde::Serialize;
 use std::convert::Infallible;
 use warp::http::StatusCode;
 use warp::{Rejection, Reply};
-use crate::routes::error::{RelayRejection, QueryParamValidationRejection};
 
 /// An API error serializable to JSON.
 #[derive(Serialize)]

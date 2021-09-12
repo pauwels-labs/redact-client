@@ -1,66 +1,81 @@
-certificate:
-  filepath: "keys/private/tmpcert"
+relayer:
+  certificate:
+    filepath: "keys/private/client-tls.p12.pem"
+certificates:
+  signing:
+    root:
+      o: "pauwels"
+      ou: "signing"
+      cn: "root"
+      expires_in: 365
+      filepath: "certs/root-signing.pem"
+    tls:
+      o: "pauwels"
+      ou: "tls"
+      cn: "laptop"
+      expires_in: 365
+      filepath: "certs/client-tls.pem"
 storage:
   url: http://localhost:8081
-crypto:
+keys:
   encryption:
-    default:
-      path: ".keys.user.default."
+    symmetric:
+      default:
+        path: ".keys.encryption.symmetric.default."
+        builder:
+          t: "Key"
+          c:
+            t: "Symmetric"
+            c:
+              t: "SodiumOxide"
+              c: {}
+        value:
+          t: "Unsealed"
+          c:
+            bytes:
+              t: "Fs"
+              c:
+                path:
+                  path: "keys/private/.keys.encryption.symmetric.default."
+                  stem: ".keys.encryption.symmetric.default."
+  signing:
+    root:
+      path: ".keys.signing.root."
+      builder:
+        t: "Key"
+        c:
+          t: "Asymmetric"
+          c:
+            t: "Secret"
+            c:
+              t: "SodiumOxideEd25519"
+              c: {}
       value:
         t: "Unsealed"
         c:
-          builder:
-            t: "Key"
-            c:
-              t: "Symmetric"
-              c:
-                t: "SodiumOxide"
-                c: {}
           bytes:
             t: "Fs"
             c:
               path:
-                path: "keys/private/.keys.encryption.default."
-                stem: ".keys.encryption.default."
-  user:
-    key:
-      path: ".keys.user.default."
+                path: "keys/private/.keys.signing.root."
+                stem: ".keys.signing.root."
+    tls:
+      path: ".keys.signing.tls."
+      builder:
+        t: "Key"
+        c:
+          t: "Asymmetric"
+          c:
+            t: "Secret"
+            c:
+              t: "SodiumOxideEd25519"
+              c: {}
       value:
         t: "Unsealed"
         c:
-          builder:
-            t: "Key"
-            c:
-              t: "Asymmetric"
-              c:
-                t: "Secret"
-                c:
-                  t: "SodiumOxide"
-                  c: {}
           bytes:
             t: "Fs"
             c:
               path:
-                path: "keys/private/.keys.user.default."
-                stem: ".keys.user.default."
-  client:
-    key:
-      path: ".keys.client.default."
-      value:
-        t: "Unsealed"
-        c:
-          builder:
-            t: "Key"
-            c:
-              t: "Asymmetric"
-              c:
-                t: "Secret"
-                c:
-                  t: "SodiumOxide"
-                  c: {}
-          bytes:
-            t: "Fs"
-            c:
-              path:
-                path: "keys/private/.keys.client.default."
-                stem: ".keys.client.default."
+                path: "keys/private/.keys.signing.tls."
+                stem: ".keys.signing.tls."

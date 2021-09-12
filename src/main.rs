@@ -1,21 +1,33 @@
 mod bootstrap;
 mod error;
 mod error_handler;
+mod relayer;
 mod render;
 mod routes;
 pub mod token;
-mod relayer;
 
-use crate::error_handler::handle_rejection;
+use crate::relayer::MutualTLSRelayer;
+use crate::{bootstrap::DistinguishedName, error_handler::handle_rejection};
+use chrono::{prelude::*, Duration};
+use pkcs8::PrivateKeyInfo;
 use redact_config::Configurator;
-use redact_crypto::{RedactStorer, SecretAsymmetricKey, SymmetricKey};
+use redact_crypto::{
+    key::sodiumoxide::{
+        SodiumOxideEd25519PublicAsymmetricKey, SodiumOxideEd25519SecretAsymmetricKey,
+    },
+    Entry, HasAlgorithmIdentifier, HasByteSource, HasPublicKey, RedactStorer,
+};
 use render::HandlebarsRenderer;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{ErrorKind, Write},
+    sync::Arc,
+};
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
-use crate::relayer::MutualTLSRelayer;
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -58,49 +70,147 @@ async fn main() {
     template_mapping.insert("secure", "./static/secure.handlebars");
     let render_engine = HandlebarsRenderer::new(template_mapping).unwrap();
 
-    // Create a relay client which supports mutual TLS
-    let relayer = MutualTLSRelayer::new(config.get_str("certificate.filepath").unwrap())
-        .unwrap();
-
     // Get storage handle
     let storage_url = config.get_str("storage.url").unwrap();
 
     // Get the bootstrap key from config
-    let storer = RedactStorer::new(&storage_url);
-    let user_akey: SecretAsymmetricKey =
-        bootstrap::setup_entry(&config, "crypto.user.key", &storer)
+    let storer_shared = Arc::new(RedactStorer::new(&storage_url));
+    let root_signing_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
+        bootstrap::setup_entry(&config, "keys.signing.root", &*storer_shared)
             .await
             .unwrap();
-    let client_akey: SecretAsymmetricKey =
-        bootstrap::setup_entry(&config, "crypto.client.key", &storer)
+    let root_signing_key = root_signing_key_entry.resolve().await.unwrap();
+    let tls_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
+        bootstrap::setup_entry(&config, "keys.signing.tls", &*storer_shared)
             .await
             .unwrap();
-    let default_skey: SymmetricKey =
-        bootstrap::setup_entry(&config, "crypto.encryption.default", &storer)
-            .await
-            .unwrap();
+    let tls_key = tls_key_entry.resolve().await.unwrap();
 
-    // let default_sym_key_result = storer.get::<SymmetricKey>(".keys.default").await;
-    // let default_sym_key = match default_sym_key_result {
-    //     Ok(e) => storer.resolve::<SymmetricKey>(e.value).await,
-    //     Err(e) => match e {
-    //         _ => {
-    //             let key = SodiumOxideSymmetricKey::new();
-    //             let bytes = ByteSource::Vector(VectorByteSource::new(key.key.as_ref()));
-    //             let builder = key.builder().into();
+    // Make the root signing cert if it doesn't already exist
+    let signing_cert_o = config.get_str("certificates.signing.root.o").unwrap();
+    let signing_cert_ou = config.get_str("certificates.signing.root.ou").unwrap();
+    let signing_cert_cn = config.get_str("certificates.signing.root.cn").unwrap();
+    let signing_cert_dn = DistinguishedName {
+        o: &signing_cert_o,
+        ou: &signing_cert_ou,
+        cn: &signing_cert_cn,
+    };
+    if let Err(e) = File::open(
+        config
+            .get_str("certificates.signing.root.filepath")
+            .unwrap(),
+    ) {
+        match e.kind() {
+            ErrorKind::NotFound => {
+                let not_before = Utc::now();
+                let not_after = not_before
+                    + Duration::days(
+                        config
+                            .get_int("certificates.signing.root.expires_in")
+                            .unwrap(),
+                    );
+                let root_signing_cert =
+                    bootstrap::setup_cert::<_, SodiumOxideEd25519PublicAsymmetricKey>(
+                        root_signing_key,
+                        None,
+                        &signing_cert_dn,
+                        None,
+                        not_before,
+                        not_after,
+                        true,
+                    )
+                    .unwrap();
+                let mut root_signing_cert_file = File::create(
+                    config
+                        .get_str("certificates.signing.root.filepath")
+                        .unwrap(),
+                )
+                .unwrap();
+                root_signing_cert_file
+                    .write_all(b"-----BEGIN CERTIFICATE-----\n")
+                    .unwrap();
+                base64::encode(root_signing_cert)
+                    .as_bytes()
+                    .chunks(64)
+                    .for_each(|chunk| {
+                        root_signing_cert_file.write_all(chunk).unwrap();
+                        root_signing_cert_file.write_all(b"\n").unwrap();
+                    });
+                root_signing_cert_file
+                    .write_all(b"-----END CERTIFICATE-----\n")
+                    .unwrap();
+            }
+            _ => Err(e).unwrap(),
+        }
+    }
 
-    //             storer
-    //                 .create(
-    //                     ".keys.default".to_owned(),
-    //                     States::Unsealed { builder, bytes },
-    //                 )
-    //                 .await
-    //                 .unwrap();
-    //             Ok(SymmetricKey::SodiumOxide(key))
-    //         }
-    //     },
-    // }
-    // .unwrap();
+    // Make the TLS cert and PKCS12 file if it doesn't exist
+    if let Err(e) = File::open(config.get_str("certificates.signing.tls.filepath").unwrap()) {
+        match e.kind() {
+            ErrorKind::NotFound => {
+                let encryption_cert_o = config.get_str("certificates.signing.tls.o").unwrap();
+                let encryption_cert_ou = config.get_str("certificates.signing.tls.ou").unwrap();
+                let encryption_cert_cn = config.get_str("certificates.signing.tls.cn").unwrap();
+                let encryption_cert_dn = DistinguishedName {
+                    o: &encryption_cert_o,
+                    ou: &encryption_cert_ou,
+                    cn: &encryption_cert_cn,
+                };
+                let not_before = Utc::now();
+                let not_after = not_before
+                    + Duration::days(
+                        config
+                            .get_int("certificates.signing.tls.expires_in")
+                            .unwrap(),
+                    );
+                let tls_cert = bootstrap::setup_cert(
+                    root_signing_key,
+                    Some(&tls_key.public_key().unwrap()),
+                    &signing_cert_dn,
+                    Some(&encryption_cert_dn),
+                    not_before,
+                    not_after,
+                    false,
+                )
+                .unwrap();
+                let mut tls_cert_vec: Vec<u8> = vec![];
+                let mut tls_cert_file =
+                    File::create(config.get_str("certificates.signing.tls.filepath").unwrap())
+                        .unwrap();
+                tls_cert_vec
+                    .write_all(b"-----BEGIN CERTIFICATE-----\n")
+                    .unwrap();
+                base64::encode(tls_cert)
+                    .as_bytes()
+                    .chunks(64)
+                    .for_each(|chunk| {
+                        tls_cert_vec.write_all(chunk).unwrap();
+                        tls_cert_vec.write_all(b"\n").unwrap();
+                    });
+                tls_cert_vec
+                    .write_all(b"-----END CERTIFICATE-----\n")
+                    .unwrap();
+                tls_cert_file.write_all(&tls_cert_vec).unwrap();
+
+                let tls_key_bs = tls_key.byte_source();
+                let mut tls_key_bytes = vec![0x04, 0x20];
+                tls_key_bytes.extend_from_slice(&tls_key_bs.get().unwrap()[0..32]);
+                let tls_key_pkcs8 =
+                    PrivateKeyInfo::new(tls_key.algorithm_identifier(), &tls_key_bytes);
+                let mut pkcs12_file =
+                    File::create(config.get_str("relayer.certificate.filepath").unwrap()).unwrap();
+                pkcs12_file.write_all(&tls_cert_vec).unwrap();
+                pkcs12_file
+                    .write_all((*tls_key_pkcs8.to_pem()).as_bytes())
+                    .unwrap();
+            }
+            _ => Err(e).unwrap(),
+        }
+    }
+
+    // Create a relay client which supports mutual TLS
+    let relayer =
+        MutualTLSRelayer::new(config.get_str("relayer.certificate.filepath").unwrap()).unwrap();
 
     // Create an in-memory session store
     let session_store = MemoryStore::new();
@@ -127,8 +237,8 @@ async fn main() {
             session_store.clone(),
             render_engine.clone(),
             token_generator.clone(),
-            storer.clone(),
-            relayer.clone()
+            storer_shared.clone(),
+            relayer.clone(),
         ))
         .with(secure_cors.clone());
     let get_routes = warp::get().and(
@@ -136,7 +246,7 @@ async fn main() {
             session_store.clone(),
             render_engine.clone(),
             token_generator.clone(),
-            storer.clone(),
+            storer_shared.clone(),
         )
         .with(unsecure_cors.clone())
         .or(routes::data::get::without_token(
@@ -147,10 +257,8 @@ async fn main() {
         .with(secure_cors)),
     );
 
-    let proxy_routes = warp::any().and(
-        warp::post().and(
-            routes::proxy::post(relayer)
-        ))
+    let proxy_routes = warp::any()
+        .and(warp::post().and(routes::proxy::post(relayer)))
         .with(unsecure_cors_post.clone());
 
     let routes = health_route

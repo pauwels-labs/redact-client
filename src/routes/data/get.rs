@@ -325,49 +325,30 @@ fn validate_base64_query_param(str: Option<String>) -> Result<(), Rejection> {
 #[cfg(test)]
 mod tests {
     use crate::token::tests::MockTokenGenerator;
-    use async_trait::async_trait;
-    use mockall::predicate::*;
-    use mockall::*;
-    use mongodb::bson::Document;
-    use redact_crypto::{CryptoError, Entry, EntryPath, HasBuilder, State, StorableType, Storer};
 
-    mock! {
-    pub Storer {}
-    #[async_trait]
-    impl Storer for Storer {
-    async fn get_indexed<T: StorableType>(
-        &self,
-        path: &str,
-        index: &Option<Document>,
-    ) -> Result<Entry<T>, CryptoError>;
-    async fn list_indexed<T: StorableType>(
-        &self,
-        path: &str,
-        skip: i64,
-        page_size: i64,
-        index: &Option<Document>,
-    ) -> Result<Vec<Entry<T>>, CryptoError>;
-    async fn create<T: StorableType>(&self, value: Entry<T>) -> Result<Entry<T>, CryptoError>;
-    }
-    impl Clone for Storer {
-        fn clone(&self) -> Self;
-    }
+    // Helper method which sets up a mock TokenGenerator which returns a given token on generate_token()
+    fn setup_mock_token_helper(token: String) -> MockTokenGenerator {
+        let mut token_generator = MockTokenGenerator::new();
+        token_generator
+            .expect_generate_token()
+            .times(1)
+            .returning(move || Ok(token.to_owned()));
+        token_generator
     }
 
     mod with_token {
-        use super::MockStorer;
+        //use super::MockStorer;
         use crate::render::{
             tests::MockRenderer, RenderTemplate, SecureTemplateValues, TemplateValues,
         };
         use crate::routes::data::get;
-        use crate::token::tests::MockTokenGenerator;
         use async_trait::async_trait;
         use mockall::predicate::*;
         use mockall::*;
+        use redact_crypto::storage::tests::MockStorer;
         use redact_crypto::{
             BinaryData, BinaryDataBuilder, BinaryType, ByteSource, CryptoError, Data, DataBuilder,
-            Entry, HasIndex, MongoStorerError, State, StringDataBuilder, TypeBuilder,
-            VectorByteSource,
+            Entry, MongoStorerError, State, StringDataBuilder, TypeBuilder, VectorByteSource,
         };
         use serde::Serialize;
 
@@ -458,12 +439,10 @@ mod tests {
 
             let mut storer = MockStorer::new();
             storer
-                .expect_get_indexed::<Data>()
+                .expect_private_get::<Data>()
                 .times(1)
-                .withf(|path, index| {
-                    path == ".testKey." && *index == Some(Data::get_index().unwrap())
-                })
-                .returning(|_, _| {
+                .withf(|path| path == ".testKey.")
+                .returning(|_| {
                     let builder = TypeBuilder::Data(DataBuilder::String(StringDataBuilder {}));
                     Ok(Entry::new(
                         ".testKey.".to_owned(),
@@ -528,12 +507,10 @@ mod tests {
 
             let mut storer = MockStorer::new();
             storer
-                .expect_get_indexed::<Data>()
+                .expect_private_get::<Data>()
                 .times(1)
-                .withf(|path, index| {
-                    path == ".testKey." && *index == Some(Data::get_index().unwrap())
-                })
-                .returning(|_, _| {
+                .withf(|path| path == ".testKey.")
+                .returning(|_| {
                     Err(CryptoError::NotFound {
                         source: Box::new(CryptoError::NotDowncastable),
                     })
@@ -597,12 +574,10 @@ mod tests {
 
             let mut storer = MockStorer::new();
             storer
-                .expect_get_indexed::<Data>()
+                .expect_private_get::<Data>()
                 .times(1)
-                .withf(|path, index| {
-                    path == ".testKey." && *index == Some(Data::get_index().unwrap())
-                })
-                .returning(|_, _| {
+                .withf(|path| path == ".testKey.")
+                .returning(|_| {
                     let builder = TypeBuilder::Data(DataBuilder::Binary(BinaryDataBuilder {}));
                     Ok(Entry::new(
                         ".testKey.".to_owned(),
@@ -661,12 +636,10 @@ mod tests {
 
             let mut storer = MockStorer::new();
             storer
-                .expect_get_indexed::<Data>()
+                .expect_private_get::<Data>()
                 .times(1)
-                .withf(|path, index| {
-                    path == ".testKey." && *index == Some(Data::get_index().unwrap())
-                })
-                .returning(|_, _| {
+                .withf(|path| path == ".testKey.")
+                .returning(|_| {
                     Err(CryptoError::NotFound {
                         source: Box::new(MongoStorerError::NotFound),
                     })
@@ -982,15 +955,5 @@ mod tests {
                 .await;
             assert_eq!(res.status(), 500);
         }
-    }
-
-    // Helper method which sets up a mock TokenGenerator which returns a given token on generate_token()
-    fn setup_mock_token_helper(token: String) -> MockTokenGenerator {
-        let mut token_generator = MockTokenGenerator::new();
-        token_generator
-            .expect_generate_token()
-            .times(1)
-            .returning(move || Ok(token.to_owned()));
-        token_generator
     }
 }

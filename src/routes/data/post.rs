@@ -273,18 +273,16 @@ mod tests {
     use crate::routes::data::post;
     use crate::token::tests::MockTokenGenerator;
     use async_trait::async_trait;
-    use futures::Future;
     use http::StatusCode;
     use mockall::predicate::*;
     use mockall::*;
-    use mongodb::bson::Document;
     use redact_crypto::key::sodiumoxide::SodiumOxideSymmetricKeyAlgorithm;
     use redact_crypto::nonce::sodiumoxide::SodiumOxideSymmetricNonce;
     use redact_crypto::{
         key::sodiumoxide::{SodiumOxideSymmetricKey, SodiumOxideSymmetricKeyBuilder},
-        ByteAlgorithm, ByteSource, CryptoError, Data, Entry, EntryPath, HasBuilder, HasIndex,
-        KeyBuilder, State, StorableType, Storer, SymmetricKey, SymmetricKeyBuilder, TypeBuilder,
-        VectorByteSource,
+        storage::tests::MockStorer,
+        ByteAlgorithm, ByteSource, Data, Entry, KeyBuilder, State, SymmetricKey,
+        SymmetricKeyBuilder, TypeBuilder, VectorByteSource,
     };
     use serde::Serialize;
     use std::{
@@ -292,29 +290,6 @@ mod tests {
         sync::Arc,
     };
     use warp_sessions::{ArcSessionStore, Session, SessionStore};
-
-    mock! {
-    pub Storer {}
-    #[async_trait]
-    impl Storer for Storer {
-    async fn get_indexed<T: StorableType>(
-        &self,
-        path: &str,
-        index: &Option<Document>,
-    ) -> Result<Entry<T>, CryptoError>;
-    async fn list_indexed<T: StorableType>(
-        &self,
-        path: &str,
-        skip: i64,
-        page_size: i64,
-        index: &Option<Document>,
-    ) -> Result<Vec<Entry<T>>, CryptoError>;
-    async fn create<T: StorableType>(&self, value: Entry<T>) -> Result<Entry<T>, CryptoError>;
-    }
-    impl Clone for Storer {
-        fn clone(&self) -> Self;
-    }
-    }
 
     mock! {
                 pub SessionStore {}
@@ -392,14 +367,10 @@ mod tests {
 
         let mut storer = MockStorer::new();
         storer
-            .expect_get_indexed::<SymmetricKey>()
+            .expect_private_get::<SymmetricKey>()
             .times(1)
-            .withf(|path, index| {
-                println!("{:?}", path);
-                path == ".keys.encryption.default."
-                    && *index == Some(SymmetricKey::get_index().unwrap())
-            })
-            .returning(move |_, _| {
+            .withf(|path| path == ".keys.encryption.default.")
+            .returning(move |_| {
                 let sosk = SodiumOxideSymmetricKey::new();
                 let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
                     SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
@@ -412,32 +383,34 @@ mod tests {
                     },
                 ))
             });
-        storer.expect_create::<Data>().returning(|_: Entry<Data>| {
-            let sosk = SodiumOxideSymmetricKey::new();
-            let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
-                SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
-            ));
-            let key_entry = Entry::<SodiumOxideSymmetricKey>::new(
-                ".keys.encryption.default.".to_owned(),
-                builder,
-                State::Unsealed {
-                    bytes: ByteSource::Vector(VectorByteSource::new(Some(sosk.key.as_ref()))),
-                },
-            );
-            let algorithm =
-                ByteAlgorithm::SodiumOxideSymmetricKey(SodiumOxideSymmetricKeyAlgorithm {
-                    key: Box::new((key_entry)),
-                    nonce: SodiumOxideSymmetricNonce::new(),
-                });
-            Ok(Entry::new(
-                ".testKey.".to_owned(),
-                builder,
-                State::Sealed {
-                    ciphertext: ByteSource::Vector(VectorByteSource::new(Some("qew".as_ref()))),
-                    algorithm,
-                },
-            ))
-        });
+        storer
+            .expect_private_create::<Data>()
+            .returning(|_: Entry<Data>| {
+                let sosk = SodiumOxideSymmetricKey::new();
+                let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
+                    SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
+                ));
+                let key_entry = Entry::<SodiumOxideSymmetricKey>::new(
+                    ".keys.encryption.default.".to_owned(),
+                    builder,
+                    State::Unsealed {
+                        bytes: ByteSource::Vector(VectorByteSource::new(Some(sosk.key.as_ref()))),
+                    },
+                );
+                let algorithm =
+                    ByteAlgorithm::SodiumOxideSymmetricKey(SodiumOxideSymmetricKeyAlgorithm {
+                        key: Box::new(key_entry),
+                        nonce: SodiumOxideSymmetricNonce::new(),
+                    });
+                Ok(Entry::new(
+                    ".testKey.".to_owned(),
+                    builder,
+                    State::Sealed {
+                        ciphertext: ByteSource::Vector(VectorByteSource::new(Some("qew".as_ref()))),
+                        algorithm,
+                    },
+                ))
+            });
 
         let mut token_generator = MockTokenGenerator::new();
         token_generator.expect_generate_token().returning(|| {
@@ -508,13 +481,10 @@ mod tests {
 
         let mut storer = MockStorer::new();
         storer
-            .expect_get_indexed::<SymmetricKey>()
+            .expect_private_get::<SymmetricKey>()
             .times(1)
-            .withf(|path, index| {
-                path == ".keys.encryption.default."
-                    && *index == Some(SymmetricKey::get_index().unwrap())
-            })
-            .returning(|_, _| {
+            .withf(|path| path == ".keys.encryption.default.")
+            .returning(|_| {
                 let sosk = SodiumOxideSymmetricKey::new();
                 let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
                     SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
@@ -528,7 +498,7 @@ mod tests {
                 ))
             });
         storer
-            .expect_create::<Data>()
+            .expect_private_create::<Data>()
             .times(1)
             .returning(|_: Entry<Data>| {
                 let sosk = SodiumOxideSymmetricKey::new();
@@ -544,7 +514,7 @@ mod tests {
                 );
                 let algorithm =
                     ByteAlgorithm::SodiumOxideSymmetricKey(SodiumOxideSymmetricKeyAlgorithm {
-                        key: Box::new((key_entry)),
+                        key: Box::new(key_entry),
                         nonce: SodiumOxideSymmetricNonce::new(),
                     });
                 Ok(Entry::new(

@@ -78,7 +78,6 @@ fn parse_url_root(url: &str) -> Result<Option<String>, ClientError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::ClientError;
     use crate::relayer::{tests::MockRelayer, RelayError::RelayRequestError};
     use crate::routes::proxy;
     use mockall::predicate::*;

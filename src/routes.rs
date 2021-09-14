@@ -1,4 +1,5 @@
 pub mod data;
+pub(crate) mod certs;
 pub mod error;
 pub(crate) mod proxy;
 

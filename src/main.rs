@@ -79,7 +79,7 @@ async fn main() {
         bootstrap::setup_entry(&config, "keys.signing.root", &*storer_shared)
             .await
             .unwrap();
-    let root_signing_key = root_signing_key_entry.resolve().await.unwrap();
+    let root_signing_key = Arc::new(root_signing_key_entry.take_resolve().await.unwrap());
     let tls_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
         bootstrap::setup_entry(&config, "keys.signing.tls", &*storer_shared)
             .await
@@ -111,7 +111,7 @@ async fn main() {
                     );
                 let root_signing_cert =
                     bootstrap::setup_cert::<_, SodiumOxideEd25519PublicAsymmetricKey>(
-                        root_signing_key,
+                        &*root_signing_key.clone(),
                         None,
                         &signing_cert_dn,
                         None,
@@ -164,7 +164,7 @@ async fn main() {
                             .unwrap(),
                     );
                 let tls_cert = bootstrap::setup_cert(
-                    root_signing_key,
+                    &*root_signing_key.clone(),
                     Some(&tls_key.public_key().unwrap()),
                     &signing_cert_dn,
                     Some(&encryption_cert_dn),
@@ -254,7 +254,18 @@ async fn main() {
             render_engine.clone(),
             token_generator.clone(),
         )
-        .with(secure_cors)),
+        .with(secure_cors.clone())),
+    );
+
+    let csr_ou = config.get_str("certificates.requesting.root.dn.ou").unwrap();
+    let csr_cn = config.get_str("certificates.requesting.root.dn.cn").unwrap();
+    let cert_routes = warp::get().and(
+        routes::certs::get::csr(
+            csr_ou,
+            csr_cn,
+            root_signing_key.clone()
+        )
+        .with(secure_cors)
     );
 
     let proxy_routes = warp::any()
@@ -264,6 +275,7 @@ async fn main() {
     let routes = health_route
         .or(get_routes)
         .or(post_routes)
+        .or(cert_routes)
         .or(proxy_routes)
         .with(warp::log("routes"))
         .recover(handle_rejection);

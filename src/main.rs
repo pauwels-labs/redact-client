@@ -28,6 +28,7 @@ use std::{
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
+use redact_crypto::key::SigningKey;
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -75,10 +76,11 @@ async fn main() {
 
     // Get the bootstrap key from config
     let storer_shared = Arc::new(RedactStorer::new(&storage_url));
-    let root_signing_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
+    let root_signing_key_entry: Entry<SigningKey> =
         bootstrap::setup_entry(&config, "keys.signing.root", &*storer_shared)
             .await
             .unwrap();
+    let root_signing_key_path = root_signing_key_entry.path.clone();
     let root_signing_key = Arc::new(root_signing_key_entry.take_resolve().await.unwrap());
     let tls_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
         bootstrap::setup_entry(&config, "keys.signing.tls", &*storer_shared)
@@ -111,7 +113,7 @@ async fn main() {
                     );
                 let root_signing_cert =
                     bootstrap::setup_cert::<_, SodiumOxideEd25519PublicAsymmetricKey>(
-                        &*root_signing_key.clone(),
+                        &*root_signing_key,
                         None,
                         &signing_cert_dn,
                         None,
@@ -164,7 +166,7 @@ async fn main() {
                             .unwrap(),
                     );
                 let tls_cert = bootstrap::setup_cert(
-                    &*root_signing_key.clone(),
+                    &*root_signing_key,
                     Some(&tls_key.public_key().unwrap()),
                     &signing_cert_dn,
                     Some(&encryption_cert_dn),
@@ -259,14 +261,21 @@ async fn main() {
 
     let csr_ou = config.get_str("certificates.requesting.root.dn.ou").unwrap();
     let csr_cn = config.get_str("certificates.requesting.root.dn.cn").unwrap();
-    let cert_routes = warp::get().and(
+    let cert_get_routes = warp::get().and(
         routes::certs::get::csr(
-            csr_ou,
-            csr_cn,
-            root_signing_key.clone()
+            csr_ou.clone(),
+            csr_cn.clone(),
+            storer_shared.clone(),
+            root_signing_key_path
         )
-        .with(secure_cors)
-    );
+        .with(secure_cors.clone()));
+    let cert_post_routes = warp::post().and(
+        routes::certs::post::sign_cert(
+            root_signing_key,
+            signing_cert_o,
+            signing_cert_ou,
+            signing_cert_cn,
+        ));
 
     let proxy_routes = warp::any()
         .and(warp::post().and(routes::proxy::post(relayer)))
@@ -274,8 +283,9 @@ async fn main() {
 
     let routes = health_route
         .or(get_routes)
+        // .or(cert_get_routes)
+        // .or(cert_post_routes)
         .or(post_routes)
-        .or(cert_routes)
         .or(proxy_routes)
         .with(warp::log("routes"))
         .recover(handle_rejection);

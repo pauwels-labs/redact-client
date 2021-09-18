@@ -15,6 +15,12 @@ certificates:
       cn: "laptop"
       expires_in: 365
       filepath: "certs/client-tls.pem"
+  requesting:
+    root:
+      dn:
+        ou: ""
+        cn: ""
+
 storage:
   url: http://localhost:8081
 keys:

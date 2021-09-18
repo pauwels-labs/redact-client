@@ -337,7 +337,6 @@ mod tests {
     }
 
     mod with_token {
-        //use super::MockStorer;
         use crate::render::{
             tests::MockRenderer, RenderTemplate, SecureTemplateValues, TemplateValues,
         };

@@ -369,14 +369,14 @@ mod tests {
         storer
             .expect_private_get::<SymmetricKey>()
             .times(1)
-            .withf(|path| path == ".keys.encryption.default.")
+            .withf(|path| path == ".keys.encryption.symmetric.default.")
             .returning(move |_| {
                 let sosk = SodiumOxideSymmetricKey::new();
                 let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
                     SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
                 ));
                 Ok(Entry::new(
-                    ".keys.encryption.default.".to_owned(),
+                    ".keys.encryption.symmetric.default.".to_owned(),
                     builder,
                     State::Unsealed {
                         bytes: ByteSource::Vector(VectorByteSource::new(Some(sosk.key.as_ref()))),
@@ -391,7 +391,7 @@ mod tests {
                     SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
                 ));
                 let key_entry = Entry::<SodiumOxideSymmetricKey>::new(
-                    ".keys.encryption.default.".to_owned(),
+                    ".keys.encryption.symmetric.default.".to_owned(),
                     builder,
                     State::Unsealed {
                         bytes: ByteSource::Vector(VectorByteSource::new(Some(sosk.key.as_ref()))),
@@ -483,14 +483,14 @@ mod tests {
         storer
             .expect_private_get::<SymmetricKey>()
             .times(1)
-            .withf(|path| path == ".keys.encryption.default.")
+            .withf(|path| path == ".keys.encryption.symmetric.default.")
             .returning(|_| {
                 let sosk = SodiumOxideSymmetricKey::new();
                 let builder = TypeBuilder::Key(KeyBuilder::Symmetric(
                     SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
                 ));
                 Ok(Entry::new(
-                    ".keys.encryption.default.".to_owned(),
+                    ".keys.encryption.symmetric.default.".to_owned(),
                     builder,
                     State::Unsealed {
                         bytes: ByteSource::Vector(VectorByteSource::new(Some(sosk.key.as_ref()))),
@@ -506,7 +506,7 @@ mod tests {
                     SymmetricKeyBuilder::SodiumOxide(SodiumOxideSymmetricKeyBuilder {}),
                 ));
                 let key_entry = Entry::<SodiumOxideSymmetricKey>::new(
-                    ".keys.encryption.default.".to_owned(),
+                    ".keys.encryption.symmetric.default.".to_owned(),
                     builder,
                     State::Unsealed {
                         bytes: ByteSource::Vector(VectorByteSource::new(Some(sosk.key.as_ref()))),

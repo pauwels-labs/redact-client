@@ -160,6 +160,14 @@ pub fn setup_cert<
         extensions.push(ext_extended_key_usage);
     }
 
+    // SANs
+    let sans_value: Vec<u8> = vec![
+        0x30, 0x0B, 0x82, 0x09, 0x6C, 0x6F, 0x63, 0x61, 0x6C, 0x68, 0x6F, 0x73, 0x74,
+    ];
+    let sans_oid: Oid = Oid(vec![2, 5, 29, 17]);
+    let ext_sans = Extension::regular(sans_oid, sans_value.as_slice());
+    extensions.push(ext_sans);
+
     // To-be-signed certificate bytes will be serialized into this vector
     let tbs_cert_vec: Vec<u8> = vec![];
 

@@ -2455,9 +2455,8 @@ dependencies = [
 
 [[package]]
 name = "redact-crypto"
-version = "2.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6628e11bcb5bd4d17d05340dacf5eafc4f28dabc275fec4b86b4a3cca8eef57"
+version = "0.1.0"
+source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=c3d7c66e28142d737efe82468b63b1be61a1f332#c3d7c66e28142d737efe82468b63b1be61a1f332"
 dependencies = [
  "async-recursion",
  "async-trait",

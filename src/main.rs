@@ -14,6 +14,7 @@ use redact_config::Configurator;
 use redact_crypto::{
     key::sodiumoxide::{
         SodiumOxideEd25519PublicAsymmetricKey, SodiumOxideEd25519SecretAsymmetricKey,
+        SodiumOxideSymmetricKey,
     },
     Entry, HasAlgorithmIdentifier, HasByteSource, HasPublicKey, RedactStorer,
 };
@@ -74,7 +75,23 @@ async fn main() {
     let storage_url = config.get_str("storage.url").unwrap();
 
     // Get the bootstrap key from config
+    let pkcs12_path = config
+        .get_str("storage.tls.client.pkcs12.filepath")
+        .unwrap();
+    let server_ca_path = config.get_str("storage.tls.server.ca.filepath").unwrap();
+    redact_crypto::storage::redact::ClientTlsConfig {
+        pkcs12_path,
+        server_ca_path,
+    }
+    .make_current();
     let storer_shared = Arc::new(RedactStorer::new(&storage_url));
+    let _: Entry<SodiumOxideSymmetricKey> = bootstrap::setup_entry(
+        &config,
+        "keys.encryption.symmetric.default",
+        &*storer_shared,
+    )
+    .await
+    .unwrap();
     let root_signing_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
         bootstrap::setup_entry(&config, "keys.signing.root", &*storer_shared)
             .await
@@ -85,6 +102,11 @@ async fn main() {
             .await
             .unwrap();
     let tls_key = tls_key_entry.resolve().await.unwrap();
+    let storer_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
+        bootstrap::setup_entry(&config, "keys.signing.storertls", &*storer_shared)
+            .await
+            .unwrap();
+    let storer_key = storer_key_entry.resolve().await.unwrap();
 
     // Make the root signing cert if it doesn't already exist
     let signing_cert_o = config.get_str("certificates.signing.root.o").unwrap();
@@ -208,6 +230,110 @@ async fn main() {
         }
     }
 
+    // Make the storer TLS cert and PKCS12 file if it doesn't exist
+    if let Err(e) = File::open(
+        config
+            .get_str("certificates.signing.storertls.filepath")
+            .unwrap(),
+    ) {
+        match e.kind() {
+            ErrorKind::NotFound => {
+                let encryption_cert_o = config.get_str("certificates.signing.storertls.o").unwrap();
+                let encryption_cert_ou =
+                    config.get_str("certificates.signing.storertls.ou").unwrap();
+                let encryption_cert_cn =
+                    config.get_str("certificates.signing.storertls.cn").unwrap();
+                let encryption_cert_dn = DistinguishedName {
+                    o: &encryption_cert_o,
+                    ou: &encryption_cert_ou,
+                    cn: &encryption_cert_cn,
+                };
+                let not_before = Utc::now();
+                let not_after = not_before
+                    + Duration::days(
+                        config
+                            .get_int("certificates.signing.storertls.expires_in")
+                            .unwrap(),
+                    );
+                let tls_cert = bootstrap::setup_cert(
+                    root_signing_key,
+                    Some(&storer_key.public_key().unwrap()),
+                    &signing_cert_dn,
+                    Some(&encryption_cert_dn),
+                    not_before,
+                    not_after,
+                    false,
+                )
+                .unwrap();
+                let mut tls_cert_vec: Vec<u8> = vec![];
+                let mut tls_cert_file = File::create(
+                    config
+                        .get_str("certificates.signing.storertls.filepath")
+                        .unwrap(),
+                )
+                .unwrap();
+                tls_cert_vec
+                    .write_all(b"-----BEGIN CERTIFICATE-----\n")
+                    .unwrap();
+                base64::encode(tls_cert)
+                    .as_bytes()
+                    .chunks(64)
+                    .for_each(|chunk| {
+                        tls_cert_vec.write_all(chunk).unwrap();
+                        tls_cert_vec.write_all(b"\n").unwrap();
+                    });
+                tls_cert_vec
+                    .write_all(b"-----END CERTIFICATE-----\n")
+                    .unwrap();
+                tls_cert_file.write_all(&tls_cert_vec).unwrap();
+
+                let storer_tls_key_bs = storer_key.byte_source();
+                let mut storer_tls_key_bytes = vec![0x04, 0x20];
+                storer_tls_key_bytes.extend_from_slice(&storer_tls_key_bs.get().unwrap()[0..32]);
+                let storer_tls_key_pkcs8 =
+                    PrivateKeyInfo::new(storer_key.algorithm_identifier(), &storer_tls_key_bytes);
+                let mut pkcs8_file = File::create("pkcs8.pem").unwrap();
+                pkcs8_file
+                    .write_all((*storer_tls_key_pkcs8.to_pem()).as_bytes())
+                    .unwrap();
+            }
+            _ => Err(e).unwrap(),
+        }
+    }
+
+    // Test request
+    // let pkcs12_path = config
+    //     .get_str("storage.tls.client.pkcs12.filepath")
+    //     .unwrap();
+    // let server_ca_path = config.get_str("storage.tls.server.ca.filepath").unwrap();
+    // let mut pkcs12_vec: Vec<u8> = vec![];
+    // File::open(&pkcs12_path)
+    //     .unwrap()
+    //     .read_to_end(&mut pkcs12_vec)
+    //     .unwrap();
+    // let pkcs12 = reqwest::Identity::from_pem(&pkcs12_vec).unwrap();
+    // let mut ca_cert_vec: Vec<u8> = vec![];
+    // File::open(&server_ca_path)
+    //     .unwrap()
+    //     .read_to_end(&mut ca_cert_vec)
+    //     .unwrap();
+    // let ca_cert = reqwest::Certificate::from_pem(&ca_cert_vec).unwrap();
+    // let client = reqwest::Client::builder()
+    //     .identity(pkcs12)
+    //     .add_root_certificate(ca_cert)
+    //     .tls_built_in_root_certs(false)
+    //     .use_rustls_tls()
+    //     .build()
+    //     .unwrap();
+    // storer_key_entry.path = ".tmp.".to_owned();
+    // client
+    //     .post("https://localhost:8081/")
+    //     .json(&storer_key_entry)
+    //     .send()
+    //     .await
+    //     .and_then(|res| res.error_for_status())
+    //     .unwrap();
+
     // Create a relay client which supports mutual TLS
     let relayer =
         MutualTLSRelayer::new(config.get_str("relayer.certificate.filepath").unwrap()).unwrap();
@@ -240,7 +366,7 @@ async fn main() {
             storer_shared.clone(),
             relayer.clone(),
         ))
-        .with(secure_cors.clone());
+        .with(unsecure_cors.clone());
     let get_routes = warp::get().and(
         routes::data::get::with_token(
             session_store.clone(),
@@ -262,8 +388,8 @@ async fn main() {
         .with(unsecure_cors_post.clone());
 
     let routes = health_route
-        .or(get_routes)
         .or(post_routes)
+        .or(get_routes)
         .or(proxy_routes)
         .with(warp::log("routes"))
         .recover(handle_rejection);

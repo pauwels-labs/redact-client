@@ -2456,7 +2456,7 @@ dependencies = [
 [[package]]
 name = "redact-crypto"
 version = "0.1.0"
-source = "git+https://github.com/pauwels-labs/redact-crypto?rev=ed71705b92c6812fdf0739c3634a955a2c6d6808#ed71705b92c6812fdf0739c3634a955a2c6d6808"
+source = "git+https://github.com/pauwels-labs/redact-crypto?rev=38e478aa9c54d7a745419387b906aa78ff9c419b#38e478aa9c54d7a745419387b906aa78ff9c419b"
 dependencies = [
  "async-recursion",
  "async-trait",

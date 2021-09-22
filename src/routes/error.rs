@@ -1,6 +1,7 @@
 use redact_crypto::CryptoError;
 use serde_json::Error as JsonSerializationError;
 use warp::reject::Reject;
+use crate::error::ClientError;
 
 #[derive(Debug)]
 pub struct IframeTokensDoNotMatchRejection;
@@ -25,6 +26,10 @@ impl Reject for SerializationRejection {}
 #[derive(Debug)]
 pub struct CryptoErrorRejection(pub CryptoError);
 impl Reject for CryptoErrorRejection {}
+
+#[derive(Debug)]
+pub struct CertificateGenerationRejection(pub ClientError);
+impl Reject for CertificateGenerationRejection {}
 
 #[derive(Debug)]
 pub struct RelayRejection;

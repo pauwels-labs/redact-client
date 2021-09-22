@@ -1,10 +1,12 @@
-use redact_crypto::{PublicAsymmetricKey, Entry};
+use redact_crypto::{PublicAsymmetricKey, Entry, Verifier, ByteSource, VectorByteSource};
 use std::sync::Arc;
 use warp::{Filter, Reply, Rejection};
 use serde::{Deserialize, Serialize};
 use crate::bootstrap::{setup_cert, DistinguishedName};
 use chrono::{DateTime, Utc, NaiveDateTime};
-use redact_crypto::key::SigningKey;
+use redact_crypto::key::{SigningKey, VerifyingKey};
+use crate::routes::{CryptoErrorRejection, BadRequestRejection};
+use crate::routes::error::CertificateGenerationRejection;
 
 #[derive(Deserialize, Serialize, Debug)]
 struct GetCSRRequestParams {
@@ -52,10 +54,29 @@ pub fn sign_cert(root_signing_key: Arc<SigningKey>, o: String, ou: String, cn: S
                 cn: &cn
             };
 
-            let r = request.csr_params.subject_key.cast::<PublicAsymmetricKey>().unwrap();
-            let subject_key: &PublicAsymmetricKey = r.resolve().await.unwrap();
+            let csr_params_string = serde_json::to_string(&request.csr_params)
+                .map_err(|_| warp::reject::custom(BadRequestRejection))?;
+            let r = request.csr_params.subject_key.cast::<VerifyingKey>()
+                .map_err(|_| warp::reject::custom(BadRequestRejection))?;
+            let subject_key: &VerifyingKey = r.resolve()
+                .await
+                .map_err(|_| warp::reject::custom(BadRequestRejection))?;
+            let csr_params_bytes = csr_params_string.as_bytes();
 
-            // TODO: Verify signature of CSR params
+            subject_key.verify(
+                ByteSource::Vector(
+                    VectorByteSource::new(
+                        Some(csr_params_bytes)
+                    )
+                ),
+                ByteSource::Vector(
+                    VectorByteSource::new(
+                        Some(base64::decode(request.signature)
+                            .map_err(|_| warp::reject::custom(BadRequestRejection))?
+                            .as_ref())
+                    )
+                )
+            ).map_err(CryptoErrorRejection)?;
 
             let signed_cert = setup_cert(
                 &*root_signing_key,
@@ -66,7 +87,7 @@ pub fn sign_cert(root_signing_key: Arc<SigningKey>, o: String, ou: String, cn: S
                 DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(61, 0), Utc),
                 false
                 //subject_alternative_names: Option<&[&str]>,
-            ).unwrap();
+            ).map_err(CertificateGenerationRejection)?;
             let cert_string = base64::encode(signed_cert);
 
             Ok::<_, Rejection>(warp::reply::with_status(
@@ -90,10 +111,18 @@ mod tests {
 
         #[tokio::test]
         async fn csr() {
-            let builder = SigningKeyBuilder::SodiumOxideEd25519(SodiumOxideEd25519SecretAsymmetricKeyBuilder {});
-            let signing_key = builder.build(Some(base64::decode("8WHFlpG0CWbAhiWnr8VyTU1H8ej5pbozUw/ObovXGJLZXX+XDcViO0G45H76LQgm1ZIm6TAsBS6p/NakRpO+Ag==").unwrap().as_slice())).unwrap();
+            let pk_base64 = "zJK9F0iLkPFGTUW2KBjDDAsitgTTa6qONvjPCFv+KUo=";
+            let sk_base64 = "yBLwIZSTRuym90wR3pJ8RSVEwVGCRA6rP5z0ffqvrXbMkr0XSIuQ8UZNRbYoGMMMCyK2BNNrqo42+M8IW/4pSg==";
+            let signature_base64 = "BeIvZcXa112A89r3/Lh1SKMstL3gmCHysba4jQ8jRvyxO7/SvElCWlTfF1LHGLtPobd+4Y5pydDQMJxu+s7oCg==";
 
-            let key_path = ".keys.path.test.";
+            let builder = SigningKeyBuilder::SodiumOxideEd25519(SodiumOxideEd25519SecretAsymmetricKeyBuilder {});
+            let signing_key = builder.build(
+                Some(
+                    base64::decode(sk_base64)
+                        .unwrap()
+                        .as_slice()
+                )).unwrap();
+
             let public_key_builder  = TypeBuilder::Key(
                 KeyBuilder::Asymmetric(
                     AsymmetricKeyBuilder::Public(
@@ -101,10 +130,15 @@ mod tests {
                             SodiumOxideEd25519PublicAsymmetricKeyBuilder {}
                         ))));
             let public_key_entry: Entry<PublicAsymmetricKey> = Entry::new(
-                key_path.to_owned(),
+                "".to_owned(),
                 public_key_builder,
                 State::Unsealed {
-                    bytes: ByteSource::Vector(VectorByteSource::new(Some(base64::decode("2V1/lw3FYjtBuOR++i0IJtWSJukwLAUuqfzWpEaTvgI=").unwrap().as_slice()))),
+                    bytes: ByteSource::Vector(
+                        VectorByteSource::new(
+                            Some(
+                                base64::decode(pk_base64)
+                                    .unwrap().as_slice()
+                            ))),
                 },
             );
 
@@ -114,7 +148,7 @@ mod tests {
                     cn: "req_cn".to_string(),
                     subject_key: public_key_entry
                 },
-                signature: "sig".to_owned()
+                signature: signature_base64.to_owned()
             };
 
             let o = "test_o";
@@ -142,9 +176,67 @@ mod tests {
             // TODO: verify cert parameters
         }
 
-        // TODO
-        // #[tokio::test]
-        // async fn csr_signature_verification_failure() { }
+
+        #[tokio::test]
+        async fn csr_bad_signature() {
+            let pk_base64 = "ddTMU+n/8/OGZmzly4d2AKCVXHXJeEYxao8jtvHhwc0=";
+            let sk_base64 = "8C6W7FC/PGgqJhupLIlAhhQprxSgHcAi0eFyYFY6YTZ11MxT6f/z84ZmbOXLh3YAoJVcdcl4RjFqjyO28eHBzQ==";
+            let signature_base64 = "t9nxBsugclUG3FL6p77tg1XOZk52o5LLUuAwNSy5oLifm4gpYERGwrFaXyT6MEbQ7A/5/SGWmDjNaMpzaNFZDQ==";
+
+            let builder = SigningKeyBuilder::SodiumOxideEd25519(SodiumOxideEd25519SecretAsymmetricKeyBuilder {});
+            let signing_key = builder.build(
+                Some(
+                    base64::decode(sk_base64)
+                        .unwrap()
+                        .as_slice()
+                )).unwrap();
+
+            let public_key_builder  = TypeBuilder::Key(
+                KeyBuilder::Asymmetric(
+                    AsymmetricKeyBuilder::Public(
+                        PublicAsymmetricKeyBuilder::SodiumOxideEd25519(
+                            SodiumOxideEd25519PublicAsymmetricKeyBuilder {}
+                        ))));
+            let public_key_entry: Entry<PublicAsymmetricKey> = Entry::new(
+                "".to_owned(),
+                public_key_builder,
+                State::Unsealed {
+                    bytes: ByteSource::Vector(
+                        VectorByteSource::new(
+                            Some(
+                                base64::decode(pk_base64)
+                                    .unwrap().as_slice()
+                            ))),
+                },
+            );
+
+            let request_body = GetCSRRequestParams {
+                csr_params: CSRParams {
+                    ou: "req_ou".to_string(),
+                    cn: "req_cn".to_string(),
+                    subject_key: public_key_entry
+                },
+                signature: signature_base64.to_owned()
+            };
+
+            let o = "test_o";
+            let ou = "test_ou";
+            let cn = "test_cn";
+            let post_csr_filter = post::sign_cert(
+                Arc::new(signing_key),
+                o.to_owned(),
+                ou.to_owned(),
+                cn.to_owned(),
+            );
+
+            let response = warp::test::request()
+                .path("/certs")
+                .body(serde_json::to_string(&request_body).unwrap())
+                .reply(&post_csr_filter)
+                .await;
+
+            assert_eq!(response.status(), 500);
+        }
     }
 
 }

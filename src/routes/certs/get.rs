@@ -45,7 +45,7 @@ pub fn csr <T: Storer> (
                 .map_err(CryptoErrorRejection)?;
             // Create a new entry with the public key for serialization
             let public_key_entry: Entry<PublicAsymmetricKey> = signing_public_key
-                .to_unsealed_entry("path".to_string())
+                .to_unsealed_entry("".to_string())
                 .map_err(CryptoErrorRejection)?;
 
             let csr_params = CSRParams {
@@ -150,7 +150,7 @@ mod tests {
                             SodiumOxideEd25519PublicAsymmetricKeyBuilder {}
                         ))));
             let public_key_entry: Entry<PublicAsymmetricKey> = Entry::new(
-                key_path.to_owned(),
+                "".to_owned(),
                 public_key_builder,
                 State::Unsealed {
                     bytes: ByteSource::Vector(VectorByteSource::new(Some(base64::decode("2V1/lw3FYjtBuOR++i0IJtWSJukwLAUuqfzWpEaTvgI=").unwrap().as_slice()))),
@@ -201,9 +201,11 @@ mod tests {
             assert_eq!(response_body.csr_params.ou, ou);
             assert_eq!(response_body.csr_params.cn, cn);
 
-            let resolved_resp_pk_str = serde_json::to_string(response_body.csr_params.subject_key.resolve().await.unwrap()).unwrap();
-            let resolved_expected_pk_str = serde_json::to_string(public_key_entry.resolve().await.unwrap()).unwrap();
-            assert_eq!(resolved_resp_pk_str, resolved_expected_pk_str);
+            let resolved_resp_pk_str = serde_json::to_string(&response_body.csr_params.subject_key).unwrap();
+            let resolved_expected_pk_str = serde_json::to_string(&public_key_entry).unwrap();
+            assert_eq!(
+                resolved_resp_pk_str, resolved_expected_pk_str
+            );
 
             //TODO: Verify signature
         }

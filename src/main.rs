@@ -260,7 +260,7 @@ async fn main() {
             storer_shared.clone(),
             relayer.clone(),
         ))
-        .with(unsecure_cors.clone());
+        .with(secure_cors.clone());
     let get_routes = warp::get().and(
         routes::data::get::with_token(
             session_store.clone(),

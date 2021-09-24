@@ -15,12 +15,6 @@ certificates:
       cn: "laptop"
       expires_in: 365
       filepath: "certs/client-tls.pem"
-    storertls:
-      o: "pauwels"
-      ou: "tls"
-      cn: "localhost"
-      expires_in: 365
-      filepath: "certs/storer-tls.pem"
 storage:
   url: https://localhost:8081
   tls:
@@ -29,7 +23,7 @@ storage:
         filepath: "keys/private/client-tls.p12.pem"
     server:
       ca:
-        filepath: "certs/root-signing.pem"
+        filepath: "certs/storer-ca.pem"
 keys:
   encryption:
     symmetric:
@@ -92,23 +86,3 @@ keys:
               path:
                 path: "keys/private/.keys.signing.tls."
                 stem: ".keys.signing.tls."
-    storertls:
-      path: ".storer.keys.signing.tls."
-      builder:
-        t: "Key"
-        c:
-          t: "Asymmetric"
-          c:
-            t: "Secret"
-            c:
-              t: "SodiumOxideEd25519"
-              c: {}
-      value:
-        t: "Unsealed"
-        c:
-          bytes:
-            t: "Fs"
-            c:
-              path:
-                path: "keys/private/.storer.keys.signing.tls."
-                stem: ".storer.keys.signing.tls."

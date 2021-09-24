@@ -189,10 +189,10 @@ pub fn submit_data<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer, Q
                             storer.create(entry).await.map_err(CryptoErrorRejection)?;
 
                             if let Some(relay_url) = query_params.relay_url.clone() {
-                                relayer
-                                    .relay(path.clone(), relay_url)
-                                    .await
-                                    .map_err(|_| warp::reject::custom(RelayRejection))?;
+                                relayer.relay(path.clone(), relay_url).await.map_err(|e| {
+                                    println!("{:?}", e);
+                                    warp::reject::custom(RelayRejection)
+                                })?;
                             }
 
                             Ok::<_, Rejection>((

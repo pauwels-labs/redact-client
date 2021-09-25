@@ -35,7 +35,7 @@ pub fn post<Q: Relayer>(
                     relayer
                         .get(body_params.host_url)
                         .await
-                        .map_err(|_| warp::reject::custom(RelayRejection))
+                        .map_err(|e| warp::reject::custom(RelayRejection))
                 }
             },
         )

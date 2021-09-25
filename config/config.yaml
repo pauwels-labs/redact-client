@@ -1,6 +1,11 @@
 relayer:
-  certificate:
-    filepath: "keys/private/client-tls.p12.pem"
+  tls:
+    client:
+      pkcs12:
+        filepath: "keys/private/client-tls.p12.pem"
+    server:
+      ca:
+        filepath: "certs/storer-ca.pem"
 certificates:
   signing:
     root:

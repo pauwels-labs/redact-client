@@ -3,6 +3,10 @@ use serde_json::Error as JsonSerializationError;
 use warp::reject::Reject;
 
 #[derive(Debug)]
+pub struct NoPathTokenProvided;
+impl Reject for NoPathTokenProvided {}
+
+#[derive(Debug)]
 pub struct IframeTokensDoNotMatchRejection;
 impl Reject for IframeTokensDoNotMatchRejection {}
 

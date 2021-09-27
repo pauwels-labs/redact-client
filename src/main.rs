@@ -265,40 +265,30 @@ async fn main() {
 
     // Build out routes
     let health_route = warp::path!("healthz")
+        .and(warp::get())
         .map(|| warp::reply::json(&Healthz {}))
         .with(unsecure_cors.clone());
-    let post_routes = warp::post()
-        .and(routes::data::post::submit_data(
+    let secure_routes = routes::secure(
+        storer_shared.clone(),
+        render_engine.clone(),
+        token_generator.clone(),
+    )
+    .with(warp::wrap_fn(routes::secure::session(
+        session_store.clone(),
+    )))
+    .with(secure_cors.clone());
+    let unsecure_routes = routes::unsecure(token_generator.clone(), render_engine.clone())
+        .with(warp::wrap_fn(routes::unsecure::session(
             session_store.clone(),
-            render_engine.clone(),
-            token_generator.clone(),
-            storer_shared.clone(),
-            relayer.clone(),
-        ))
-        .with(secure_cors.clone());
-    let get_routes = warp::get().and(
-        routes::data::get::with_token(
-            session_store.clone(),
-            render_engine.clone(),
-            token_generator.clone(),
-            storer_shared.clone(),
-        )
-        .with(secure_cors.clone())
-        .or(routes::data::get::without_token(
-            session_store.clone(),
-            render_engine.clone(),
-            token_generator.clone(),
-        )
-        .with(unsecure_cors)),
-    );
-
+        )))
+        .with(unsecure_cors);
     let proxy_routes = warp::any()
         .and(warp::post().and(routes::proxy::post(relayer)))
         .with(unsecure_cors_post.clone());
 
     let routes = health_route
-        .or(post_routes)
-        .or(get_routes)
+        .or(unsecure_routes)
+        .or(secure_routes)
         .or(proxy_routes)
         .with(warp::log("routes"))
         .recover(handle_rejection);

@@ -1,325 +1,425 @@
-use std::sync::Arc;
+// use std::sync::Arc;
 
-use crate::routes::error::QueryParamValidationRejection;
-use crate::{
-    render::{
-        RenderTemplate, Rendered, Renderer, SecureTemplateValues, TemplateValues,
-        UnsecureTemplateValues,
-    },
-    routes::{
-        CryptoErrorRejection, IframeTokensDoNotMatchRejection, SessionTokenNotFoundRejection,
-    },
-    token::TokenGenerator,
-};
-use percent_encoding::percent_decode_str;
-use redact_crypto::{CryptoError, Data, Storer};
-use regex::Regex;
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
-use warp::{Filter, Rejection, Reply};
-use warp_sessions::{
-    self, CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
-};
+// use crate::routes::error::QueryParamValidationRejection;
+// use crate::{
+//     render::{
+//         RenderTemplate, Rendered, Renderer, SecureTemplateValues, TemplateValues,
+//         UnsecureTemplateValues,
+//     },
+//     routes::{
+//         CryptoErrorRejection, IframeTokensDoNotMatchRejection, SessionTokenNotFoundRejection,
+//     },
+//     token::TokenGenerator,
+// };
+// use percent_encoding::percent_decode_str;
+// use redact_crypto::{CryptoError, Data, Storer};
+// use regex::Regex;
+// use serde::de::DeserializeOwned;
+// use serde::{Deserialize, Serialize};
+// use warp::{path::Peek, Filter, Rejection, Reply};
+// use warp_sessions::{
+//     self, CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore,
+// };
 
-pub trait Validate {
-    fn validate(&self) -> Result<(), Rejection>;
-}
+// pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
+//     session_store: S,
+//     render_engine: R,
+//     token_generator: T,
+// ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
+//     warp::any()
+//         .and(warp::path!("data" / String).map(|path| WithoutTokenPathParams { path }))
+//         .and(validated_query_params::<WithoutTokenQueryParams>())
+//         .and(warp_sessions::request::with_session(
+//             session_store,
+//             Some(CookieOptions {
+//                 cookie_name: "sid",
+//                 cookie_value: None,
+//                 max_age: Some(60),
+//                 domain: None,
+//                 path: None,
+//                 secure: false,
+//                 http_only: true,
+//                 same_site: Some(SameSiteCookieOption::None),
+//             }),
+//         ))
+//         .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
+//         .and(warp::any().map(move || render_engine.clone()))
+//         .and_then(
+//             move |path_params: WithoutTokenPathParams,
+//                   query_params: WithoutTokenQueryParams,
+//                   session_with_store: SessionWithStore<S>,
+//                   token: String,
+//                   render_engine: R| async move {
+//                 let utv = UnsecureTemplateValues {
+//                     path: path_params.path.clone(),
+//                     token: token.clone(),
+//                     css: query_params.css,
+//                     edit: query_params.edit,
+//                     data_type: query_params.data_type,
+//                     relay_url: query_params.relay_url,
+//                     js_height_msg_prefix: query_params.js_height_msg_prefix,
+//                     js_message: query_params.js_message,
+//                 };
+//                 Ok::<_, Rejection>((
+//                     Rendered::new(
+//                         render_engine,
+//                         RenderTemplate {
+//                             name: "unsecure",
+//                             value: TemplateValues::Unsecure(utv),
+//                         },
+//                     )?,
+//                     path_params,
+//                     session_with_store,
+//                     token,
+//                 ))
+//             },
+//         )
+//         .untuple_one()
+//         .and_then(
+//             move |reply: Rendered,
+//                   path_params: WithoutTokenPathParams,
+//                   mut session_with_store: SessionWithStore<S>,
+//                   token: String| async move {
+//                 session_with_store
+//                     .session
+//                     .insert("token", token.clone())
+//                     .map_err(|_| warp::reject())?;
+//                 session_with_store.cookie_options.path =
+//                     Some(format!("/data/{}/{}", path_params.path, token));
+//                 Ok::<_, Rejection>((reply, session_with_store))
+//             },
+//         )
+//         .untuple_one()
+//         .and_then(warp_sessions::reply::with_session)
+// }
 
-#[derive(Deserialize, Serialize)]
-struct WithoutTokenQueryParams {
-    css: Option<String>,
-    edit: Option<bool>,
-    data_type: Option<String>,
-    relay_url: Option<String>,
-    js_message: Option<String>,
-    js_height_msg_prefix: Option<String>,
-}
+// pub fn with_token2<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
+//     session_store: S,
+//     render_engine: R,
+//     token_generator: T,
+//     storer: Arc<H>,
+// ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
+//     warp::any()
+//         .and(warp::path!("secure" / ..))
+//         .and(
+//             warp::any()
+//                 .and(
+//                     warp::path!("data" / String / String)
+//                         .map(|path, token| WithTokenPathParams { path, token }),
+//                 )
+//                 .and(warp_sessions::request::with_session(
+//                     session_store,
+//                     Some(CookieOptions {
+//                         cookie_name: "sid",
+//                         cookie_value: None,
+//                         max_age: Some(60),
+//                         domain: None,
+//                         path: None,
+//                         secure: false,
+//                         http_only: true,
+//                         same_site: Some(SameSiteCookieOption::None),
+//                     }),
+//                 ))
+//                 .and(warp::query::<WithTokenQueryParams>())
+//                 .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
+//                 .and(warp::any().map(move || render_engine.clone()))
+//                 .and(warp::any().map(move || storer.clone()))
+//                 .and_then(
+//                     move |session_with_store: SessionWithStore<S>,
+//                           path_params: WithTokenPathParams,
+//                           query_params: WithTokenQueryParams,
+//                           token: String,
+//                           render_engine: R,
+//                           storer: Arc<H>| async move {},
+//                 ),
+//         )
+//         .or(warp::any().and(warp::path!("connect")))
+// .and_then(
+//     move |path_params: WithTokenPathParams,
+//           query_params: WithTokenQueryParams,
+//           session_with_store: SessionWithStore<S>,
+//           token: String,
+//           render_engine: R,
+//           storer: Arc<H>| async move {
+//         if let Some(session_token) = session_with_store.session.get::<String>("token") {
+//             if session_token != path_params.token {
+//                 Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
+//             } else {
+//                 Ok(())
+//             }
+//         } else {
+//             Err(warp::reject::custom(SessionTokenNotFoundRejection))
+//         }?;
 
-impl Validate for WithoutTokenQueryParams {
-    fn validate(&self) -> Result<(), Rejection> {
-        validate_base64_query_param(self.js_message.clone())?;
-        validate_base64_query_param(self.js_height_msg_prefix.clone())?;
-        Ok::<_, Rejection>(())
-    }
-}
+//         let data_entry = match storer.get::<Data>(&path_params.path).await {
+//             Ok(e) => Ok(Some(e)),
+//             Err(e) => match e {
+//                 CryptoError::NotFound { .. } => Ok(None),
+//                 _ => Err(e),
+//             },
+//         }
+//         .map_err(CryptoErrorRejection)?;
 
-#[derive(Deserialize, Serialize)]
-struct WithoutTokenPathParams {
-    path: String,
-}
+//         let data = match data_entry {
+//             Some(data_entry) => data_entry
+//                 .take_resolve()
+//                 .await
+//                 .map_err(CryptoErrorRejection)?,
+//             None => {
+//                 if let Some(data_type) = query_params.data_type.clone() {
+//                     match data_type.to_ascii_lowercase().as_ref() {
+//                         "bool" => Data::Bool(false),
+//                         "u64" => Data::U64(0),
+//                         "i64" => Data::I64(0),
+//                         "f64" => Data::F64(0.0),
+//                         "media" => Data::Binary(None),
+//                         _ => Data::String("".to_owned()),
+//                     }
+//                 } else {
+//                     Data::String("".to_owned())
+//                 }
+//             }
+//         };
 
-#[derive(Deserialize, Serialize)]
-struct WithTokenQueryParams {
-    css: Option<String>,
-    edit: Option<bool>,
-    data_type: Option<String>,
-    relay_url: Option<String>,
-    js_message: Option<String>,
-    js_height_msg_prefix: Option<String>,
-}
+//         let is_binary_data = match data {
+//             Data::Binary(_) => true,
+//             _ => query_params.data_type == Some("media".to_owned()),
+//         };
 
-impl Validate for WithTokenQueryParams {
-    fn validate(&self) -> Result<(), Rejection> {
-        validate_base64_query_param(self.js_message.clone())?;
-        validate_base64_query_param(self.js_height_msg_prefix.clone())?;
-        Ok::<_, Rejection>(())
-    }
-}
+//         let reply = Rendered::new(
+//             render_engine,
+//             RenderTemplate {
+//                 name: "secure",
+//                 value: TemplateValues::Secure(SecureTemplateValues {
+//                     data: Some(data),
+//                     path: Some(path_params.path.clone()),
+//                     token: Some(token.clone()),
+//                     css: query_params.css,
+//                     edit: query_params.edit,
+//                     data_type: query_params.data_type,
+//                     relay_url: query_params.relay_url,
+//                     js_message: query_params.js_message,
+//                     js_height_msg_prefix: query_params.js_height_msg_prefix,
+//                     is_binary_data: is_binary_data,
+//                 }),
+//             },
+//         )?;
 
-#[derive(Deserialize, Serialize, Debug)]
-struct WithTokenPathParams {
-    path: String,
-    token: String,
-}
+//         Ok::<_, Rejection>((
+//             reply,
+//             path_params,
+//             query_params.edit.unwrap_or(false),
+//             token,
+//             session_with_store,
+//         ))
+//     },
+// )
+// .untuple_one()
+// .and_then(
+//     move |reply: Rendered,
+//           path_params: WithTokenPathParams,
+//           edit: bool,
+//           token: String,
+//           mut session_with_store: SessionWithStore<S>| async move {
+//         session_with_store.cookie_options.path = Some(format!(
+//             "/data/{}/{}",
+//             path_params.path.clone(),
+//             path_params.token.clone()
+//         ));
+//         session_with_store.session.destroy();
 
-pub fn validated_query_params<T: 'static + DeserializeOwned + Send + Validate>(
-) -> impl Filter<Extract = (T,), Error = Rejection> + Copy {
-    warp::query::<T>().and_then(move |param: T| async move {
-        param.validate()?;
-        Ok::<_, Rejection>(param)
-    })
-}
+//         let mut new_session = SessionWithStore::<S> {
+//             session: Session::new(),
+//             session_store: session_with_store.session_store.clone(),
+//             cookie_options: CookieOptions {
+//                 cookie_name: "sid",
+//                 cookie_value: None,
+//                 max_age: Some(60),
+//                 domain: None,
+//                 path: Some(format!("/data/{}", token.clone())),
+//                 secure: false,
+//                 http_only: true,
+//                 same_site: Some(SameSiteCookieOption::None),
+//             },
+//         };
 
-pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
-    session_store: S,
-    render_engine: R,
-    token_generator: T,
-) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
-    warp::any()
-        .and(warp::path!("data" / String).map(|path| WithoutTokenPathParams { path }))
-        .and(validated_query_params::<WithoutTokenQueryParams>())
-        .and(warp_sessions::request::with_session(
-            session_store,
-            Some(CookieOptions {
-                cookie_name: "sid",
-                cookie_value: None,
-                max_age: Some(60),
-                domain: None,
-                path: None,
-                secure: false,
-                http_only: true,
-                same_site: Some(SameSiteCookieOption::None),
-            }),
-        ))
-        .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
-        .and(warp::any().map(move || render_engine.clone()))
-        .and_then(
-            move |path_params: WithoutTokenPathParams,
-                  query_params: WithoutTokenQueryParams,
-                  session_with_store: SessionWithStore<S>,
-                  token: String,
-                  render_engine: R| async move {
-                let utv = UnsecureTemplateValues {
-                    path: path_params.path.clone(),
-                    token: token.clone(),
-                    css: query_params.css,
-                    edit: query_params.edit,
-                    data_type: query_params.data_type,
-                    relay_url: query_params.relay_url,
-                    js_height_msg_prefix: query_params.js_height_msg_prefix,
-                    js_message: query_params.js_message,
-                };
-                Ok::<_, Rejection>((
-                    Rendered::new(
-                        render_engine,
-                        RenderTemplate {
-                            name: "unsecure",
-                            value: TemplateValues::Unsecure(utv),
-                        },
-                    )?,
-                    path_params,
-                    session_with_store,
-                    token,
-                ))
-            },
-        )
-        .untuple_one()
-        .and_then(
-            move |reply: Rendered,
-                  path_params: WithoutTokenPathParams,
-                  mut session_with_store: SessionWithStore<S>,
-                  token: String| async move {
-                session_with_store
-                    .session
-                    .insert("token", token.clone())
-                    .map_err(|_| warp::reject())?;
-                session_with_store.cookie_options.path =
-                    Some(format!("/data/{}/{}", path_params.path, token));
-                Ok::<_, Rejection>((reply, session_with_store))
-            },
-        )
-        .untuple_one()
-        .and_then(warp_sessions::reply::with_session)
-}
+//         if edit {
+//             new_session
+//                 .session
+//                 .insert("token", token)
+//                 .map_err(|_| warp::reject())?;
+//         }
+//         Ok::<_, Rejection>((
+//             warp_sessions::reply::with_session(reply, session_with_store).await?,
+//             new_session,
+//         ))
+//     },
+// )
+// .untuple_one()
+// .and_then(warp_sessions::reply::with_session)
+// }
 
-pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
-    session_store: S,
-    render_engine: R,
-    token_generator: T,
-    storer: Arc<H>,
-) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
-    warp::any()
-        .and(
-            warp::path!("data" / String / String)
-                .map(|path, token| WithTokenPathParams { path, token }),
-        )
-        .and(warp::query::<WithTokenQueryParams>())
-        .and(warp_sessions::request::with_session(
-            session_store,
-            Some(CookieOptions {
-                cookie_name: "sid",
-                cookie_value: None,
-                max_age: Some(60),
-                domain: None,
-                path: None,
-                secure: false,
-                http_only: true,
-                same_site: Some(SameSiteCookieOption::None),
-            }),
-        ))
-        .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
-        .and(warp::any().map(move || render_engine.clone()))
-        .and(warp::any().map(move || storer.clone()))
-        .and_then(
-            move |path_params: WithTokenPathParams,
-                  query_params: WithTokenQueryParams,
-                  session_with_store: SessionWithStore<S>,
-                  token: String,
-                  render_engine: R,
-                  storer: Arc<H>| async move {
-                if let Some(session_token) = session_with_store.session.get::<String>("token") {
-                    if session_token != path_params.token {
-                        Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
-                    } else {
-                        Ok(())
-                    }
-                } else {
-                    Err(warp::reject::custom(SessionTokenNotFoundRejection))
-                }?;
+// pub fn with_token<S: SessionStore, R: Renderer, T: TokenGenerator, H: Storer>(
+//     session_store: S,
+//     render_engine: R,
+//     token_generator: T,
+//     storer: Arc<H>,
+// ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
+//     warp::any()
+//         .and(
+//             warp::path!("data" / String / String)
+//                 .map(|path, token| WithTokenPathParams { path, token }),
+//         )
+//         .and(warp::query::<WithTokenQueryParams>())
+//         .and(warp_sessions::request::with_session(
+//             session_store,
+//             Some(CookieOptions {
+//                 cookie_name: "sid",
+//                 cookie_value: None,
+//                 max_age: Some(60),
+//                 domain: None,
+//                 path: None,
+//                 secure: false,
+//                 http_only: true,
+//                 same_site: Some(SameSiteCookieOption::None),
+//             }),
+//         ))
+//         .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
+//         .and(warp::any().map(move || render_engine.clone()))
+//         .and(warp::any().map(move || storer.clone()))
+//         .and_then(
+//             move |path_params: WithTokenPathParams,
+//                   query_params: WithTokenQueryParams,
+//                   session_with_store: SessionWithStore<S>,
+//                   token: String,
+//                   render_engine: R,
+//                   storer: Arc<H>| async move {
+//                 if let Some(session_token) = session_with_store.session.get::<String>("token") {
+//                     if session_token != path_params.token {
+//                         Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
+//                     } else {
+//                         Ok(())
+//                     }
+//                 } else {
+//                     Err(warp::reject::custom(SessionTokenNotFoundRejection))
+//                 }?;
 
-                let data_entry = match storer.get::<Data>(&path_params.path).await {
-                    Ok(e) => Ok(Some(e)),
-                    Err(e) => match e {
-                        CryptoError::NotFound { .. } => Ok(None),
-                        _ => Err(e),
-                    },
-                }
-                .map_err(CryptoErrorRejection)?;
+//                 let data_entry = match storer.get::<Data>(&path_params.path).await {
+//                     Ok(e) => Ok(Some(e)),
+//                     Err(e) => match e {
+//                         CryptoError::NotFound { .. } => Ok(None),
+//                         _ => Err(e),
+//                     },
+//                 }
+//                 .map_err(CryptoErrorRejection)?;
 
-                let data = match data_entry {
-                    Some(data_entry) => data_entry
-                        .take_resolve()
-                        .await
-                        .map_err(CryptoErrorRejection)?,
-                    None => {
-                        if let Some(data_type) = query_params.data_type.clone() {
-                            match data_type.to_ascii_lowercase().as_ref() {
-                                "bool" => Data::Bool(false),
-                                "u64" => Data::U64(0),
-                                "i64" => Data::I64(0),
-                                "f64" => Data::F64(0.0),
-                                "media" => Data::Binary(None),
-                                _ => Data::String("".to_owned()),
-                            }
-                        } else {
-                            Data::String("".to_owned())
-                        }
-                    }
-                };
+//                 let data = match data_entry {
+//                     Some(data_entry) => data_entry
+//                         .take_resolve()
+//                         .await
+//                         .map_err(CryptoErrorRejection)?,
+//                     None => {
+//                         if let Some(data_type) = query_params.data_type.clone() {
+//                             match data_type.to_ascii_lowercase().as_ref() {
+//                                 "bool" => Data::Bool(false),
+//                                 "u64" => Data::U64(0),
+//                                 "i64" => Data::I64(0),
+//                                 "f64" => Data::F64(0.0),
+//                                 "media" => Data::Binary(None),
+//                                 _ => Data::String("".to_owned()),
+//                             }
+//                         } else {
+//                             Data::String("".to_owned())
+//                         }
+//                     }
+//                 };
 
-                let is_binary_data = match data {
-                    Data::Binary(_) => true,
-                    _ => query_params.data_type == Some("media".to_owned()),
-                };
+//                 let is_binary_data = match data {
+//                     Data::Binary(_) => true,
+//                     _ => query_params.data_type == Some("media".to_owned()),
+//                 };
 
-                let reply = Rendered::new(
-                    render_engine,
-                    RenderTemplate {
-                        name: "secure",
-                        value: TemplateValues::Secure(SecureTemplateValues {
-                            data: Some(data),
-                            path: Some(path_params.path.clone()),
-                            token: Some(token.clone()),
-                            css: query_params.css,
-                            edit: query_params.edit,
-                            data_type: query_params.data_type,
-                            relay_url: query_params.relay_url,
-                            js_message: query_params.js_message,
-                            js_height_msg_prefix: query_params.js_height_msg_prefix,
-                            is_binary_data: is_binary_data,
-                        }),
-                    },
-                )?;
+//                 let reply = Rendered::new(
+//                     render_engine,
+//                     RenderTemplate {
+//                         name: "secure",
+//                         value: TemplateValues::Secure(SecureTemplateValues {
+//                             data: Some(data),
+//                             path: Some(path_params.path.clone()),
+//                             token: Some(token.clone()),
+//                             css: query_params.css,
+//                             edit: query_params.edit,
+//                             data_type: query_params.data_type,
+//                             relay_url: query_params.relay_url,
+//                             js_message: query_params.js_message,
+//                             js_height_msg_prefix: query_params.js_height_msg_prefix,
+//                             is_binary_data: is_binary_data,
+//                         }),
+//                     },
+//                 )?;
 
-                Ok::<_, Rejection>((
-                    reply,
-                    path_params,
-                    query_params.edit.unwrap_or(false),
-                    token,
-                    session_with_store,
-                ))
-            },
-        )
-        .untuple_one()
-        .and_then(
-            move |reply: Rendered,
-                  path_params: WithTokenPathParams,
-                  edit: bool,
-                  token: String,
-                  mut session_with_store: SessionWithStore<S>| async move {
-                session_with_store.cookie_options.path = Some(format!(
-                    "/data/{}/{}",
-                    path_params.path.clone(),
-                    path_params.token.clone()
-                ));
-                session_with_store.session.destroy();
+//                 Ok::<_, Rejection>((
+//                     reply,
+//                     path_params,
+//                     query_params.edit.unwrap_or(false),
+//                     token,
+//                     session_with_store,
+//                 ))
+//             },
+//         )
+//         .untuple_one()
+//         .and_then(
+//             move |reply: Rendered,
+//                   path_params: WithTokenPathParams,
+//                   edit: bool,
+//                   token: String,
+//                   mut session_with_store: SessionWithStore<S>| async move {
+//                 println!(
+//                     "{:?}, {:?}",
+//                     session_with_store.cookie_options.path,
+//                     format!(
+//                         "data/{}/{}",
+//                         path_params.path.clone(),
+//                         path_params.token.clone()
+//                     )
+//                 );
+//                 session_with_store.cookie_options.path = Some(format!(
+//                     "/data/{}/{}",
+//                     path_params.path.clone(),
+//                     path_params.token.clone()
+//                 ));
+//                 session_with_store.session.destroy();
 
-                let mut new_session = SessionWithStore::<S> {
-                    session: Session::new(),
-                    session_store: session_with_store.session_store.clone(),
-                    cookie_options: CookieOptions {
-                        cookie_name: "sid",
-                        cookie_value: None,
-                        max_age: Some(60),
-                        domain: None,
-                        path: Some(format!("/data/{}", token.clone())),
-                        secure: false,
-                        http_only: true,
-                        same_site: Some(SameSiteCookieOption::None),
-                    },
-                };
+//                 let mut new_session = SessionWithStore::<S> {
+//                     session: Session::new(),
+//                     session_store: session_with_store.session_store.clone(),
+//                     cookie_options: CookieOptions {
+//                         cookie_name: "sid",
+//                         cookie_value: None,
+//                         max_age: Some(60),
+//                         domain: None,
+//                         path: Some(format!("/data/{}", token.clone())),
+//                         secure: false,
+//                         http_only: true,
+//                         same_site: Some(SameSiteCookieOption::None),
+//                     },
+//                 };
 
-                if edit {
-                    new_session
-                        .session
-                        .insert("token", token)
-                        .map_err(|_| warp::reject())?;
-                }
-                Ok::<_, Rejection>((
-                    warp_sessions::reply::with_session(reply, session_with_store).await?,
-                    new_session,
-                ))
-            },
-        )
-        .untuple_one()
-        .and_then(warp_sessions::reply::with_session)
-}
-
-fn validate_base64_query_param(str: Option<String>) -> Result<(), Rejection> {
-    match str {
-        Some(msg) => percent_decode_str(&msg)
-            .decode_utf8()
-            .map_err(|_| warp::reject::custom(QueryParamValidationRejection))
-            .and_then(|str| {
-                let base64_regex = Regex::new(r"^[A-Za-z0-9+/]+={0,2}$").unwrap();
-                match base64_regex.is_match(&str.to_string()) {
-                    true => Ok::<_, Rejection>(()),
-                    false => Err(warp::reject::custom(QueryParamValidationRejection)),
-                }
-            }),
-        None => Ok(()),
-    }
-}
+//                 if edit {
+//                     new_session
+//                         .session
+//                         .insert("token", token)
+//                         .map_err(|_| warp::reject())?;
+//                 }
+//                 Ok::<_, Rejection>((
+//                     warp_sessions::reply::with_session(reply, session_with_store).await?,
+//                     new_session,
+//                 ))
+//             },
+//         )
+//         .untuple_one()
+//         .and_then(warp_sessions::reply::with_session)
+// }
 
 #[cfg(test)]
 mod tests {

@@ -31,7 +31,6 @@ pub enum TemplateValues {
 #[derive(Serialize, Debug, Default, PartialEq)]
 pub struct UnsecureTemplateValues {
     pub path: String,
-    pub token: String,
     pub css: Option<String>,
     pub edit: Option<bool>,
     pub data_type: Option<String>,
@@ -190,7 +189,7 @@ fn data_input(
             out.write("<input type=\"hidden\" name=\"value_type\" value=\"media\">")?;
             out.write(&format!(
                 "<input type=\"file\" class=\"file\" name=\"value\" accept=\"{}\"autofocus>",
-                &join(BinaryType::iter(), &",")
+                &join(BinaryType::iter(), ",")
             ))
         }
     }

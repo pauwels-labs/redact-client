@@ -6,7 +6,7 @@ use warp_sessions::{
     CookieOptions, SameSiteCookieOption, SessionStore, SessionWithStore, WithSession,
 };
 
-pub fn data<T: TokenGenerator, R: Renderer>(
+pub fn data<T: TokenGenerator, R: Renderer + Clone + Send + Sync + 'static>(
     token_generator: T,
     render_engine: R,
 ) -> impl Filter<Extract = (impl Reply, String, String), Error = Rejection> + Clone {

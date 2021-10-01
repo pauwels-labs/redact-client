@@ -1,6 +1,7 @@
 pub mod data;
 
 use crate::{
+    relayer::Relayer,
     render::Renderer,
     routes::error::{
         IframeTokensDoNotMatchRejection, NoPathTokenProvided, SessionTokenNotFoundRejection,
@@ -14,21 +15,32 @@ use warp_sessions::{
     CookieOptions, SameSiteCookieOption, Session, SessionStore, SessionWithStore, WithSession,
 };
 
-pub fn data<H: Storer, R: Renderer, T: TokenGenerator>(
+pub fn data<H: Storer, R: Renderer + Clone + Send + 'static, T: TokenGenerator, Q: Relayer>(
     storer: Arc<H>,
     render_engine: R,
     token_generator: T,
-) -> impl Filter<Extract = (impl Reply, String, Option<String>, Option<String>), Error = Rejection> + Clone
-{
-    warp::path!("data" / ..).and(data::get(storer, render_engine, token_generator))
+    relayer: Q,
+) -> impl Filter<Extract = (Box<dyn Reply>, String, Option<String>, Option<String>), Error = Rejection>
+       + Clone {
+    warp::path!("data" / ..).and(
+        data::get(
+            storer.clone(),
+            render_engine.clone(),
+            token_generator.clone(),
+        )
+        .or(data::post(render_engine, token_generator, storer, relayer))
+        .unify(),
+    )
 }
 
-pub fn session<T, S: SessionStore, R: Reply + 'static>(
+pub fn session<T, S: SessionStore>(
     session_store: S,
 ) -> impl Fn(T) -> BoxedFilter<(WithSession<Box<dyn Reply>>,)>
 where
-    T: Filter<Extract = (R, String, Option<String>, Option<String>), Error = Rejection>
-        + Clone
+    T: Filter<
+            Extract = (Box<dyn Reply>, String, Option<String>, Option<String>),
+            Error = Rejection,
+        > + Clone
         + Send
         + Sync
         + 'static,
@@ -75,7 +87,7 @@ where
             .and(filter)
             .and_then(
                 |mut session_with_store: SessionWithStore<S>,
-                 reply: R,
+                 reply: Box<dyn Reply>,
                  old_path: String,
                  new_path: Option<String>,
                  token: Option<String>| async move {

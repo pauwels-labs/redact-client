@@ -3,9 +3,8 @@ use warp::{Filter, Rejection, Reply};
 use crate::{render::Renderer, routes::validated_query_params, token::TokenGenerator};
 
 pub mod get;
-pub mod post;
 
-pub fn get<T: TokenGenerator, R: Renderer>(
+pub fn get<T: TokenGenerator, R: Renderer + Clone + Send + Sync>(
     token_generator: T,
     render_engine: R,
 ) -> impl Filter<Extract = (impl Reply, String, String), Error = Rejection> + Clone {
@@ -18,7 +17,7 @@ pub fn get<T: TokenGenerator, R: Renderer>(
             |path: String, token: String, query: get::QueryParams, render_engine: R| async move {
                 let secure_path = format!("/secure/data/{}/{}", &path, &token);
                 Ok::<_, Rejection>((
-                    get::reply(&secure_path, query, render_engine)?,
+                    get::reply(&secure_path, query, &render_engine)?,
                     secure_path,
                     token,
                 ))

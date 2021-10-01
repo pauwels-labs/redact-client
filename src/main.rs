@@ -72,12 +72,12 @@ async fn main() {
     let mut template_mapping = HashMap::new();
     template_mapping.insert("unsecure", "./static/unsecure.handlebars");
     template_mapping.insert("secure", "./static/secure.handlebars");
-    let render_engine = HandlebarsRenderer::new(template_mapping).unwrap();
+    let render_engine = Arc::new(HandlebarsRenderer::new(template_mapping).unwrap());
 
     // Get storage handle
     let storage_url = config.get_str("storage.url").unwrap();
 
-    // Get the bootstrap key from config
+    // Setup mTLS configuration for all calls to a Redact storer
     let pkcs12_path = config
         .get_str("storage.tls.client.pkcs12.filepath")
         .unwrap();
@@ -87,7 +87,11 @@ async fn main() {
         server_ca_path,
     }
     .make_current();
+
+    // Create the internally-used Redact storer; this is the self-storer
     let storer_shared = Arc::new(RedactStorer::new(&storage_url));
+
+    // Fetch or create the default encryption key
     let _: Entry<SodiumOxideSymmetricKey> = bootstrap::setup_entry(
         &config,
         "keys.encryption.symmetric.default",
@@ -95,18 +99,22 @@ async fn main() {
     )
     .await
     .unwrap();
+
+    // Fetch or create the root signing key from which all other identities will be derived
     let root_signing_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
         bootstrap::setup_entry(&config, "keys.signing.root", &*storer_shared)
             .await
             .unwrap();
     let root_signing_key = root_signing_key_entry.resolve().await.unwrap();
+
+    // Fetch or create the key that will be used for initiating client TLS connections
     let tls_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
         bootstrap::setup_entry(&config, "keys.signing.tls", &*storer_shared)
             .await
             .unwrap();
     let tls_key = tls_key_entry.resolve().await.unwrap();
 
-    // Make the root signing cert if it doesn't already exist
+    // Create the certificate for the signing key if it doesn't already exist
     let signing_cert_o = config.get_str("certificates.signing.root.o").unwrap();
     let signing_cert_ou = config.get_str("certificates.signing.root.ou").unwrap();
     let signing_cert_cn = config.get_str("certificates.signing.root.cn").unwrap();
@@ -245,10 +253,10 @@ async fn main() {
     )
     .unwrap();
 
-    // Create an in-memory session store
+    // Create an in-memory session store for managing secure client sessions
     let session_store = MemoryStore::new();
 
-    // Create a token generator
+    // Create a token generator for generating the iframe tokens
     let token_generator = FromThreadRng::new();
 
     // Create a CORS filter for the insecure routes that allows any origin
@@ -272,6 +280,7 @@ async fn main() {
         storer_shared.clone(),
         render_engine.clone(),
         token_generator.clone(),
+        relayer.clone(),
     )
     .with(warp::wrap_fn(routes::secure::session(
         session_store.clone(),
@@ -286,6 +295,7 @@ async fn main() {
         .and(warp::post().and(routes::proxy::post(relayer)))
         .with(unsecure_cors_post.clone());
 
+    // Assemble all routes into one handler
     let routes = health_route
         .or(unsecure_routes)
         .or(secure_routes)

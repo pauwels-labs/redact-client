@@ -28,8 +28,8 @@ impl Validate for QueryParams {
 pub fn reply<R: Renderer>(
     path: &str,
     query: QueryParams,
-    render_engine: R,
-) -> Result<impl Reply, RenderError> {
+    render_engine: &R,
+) -> Result<impl Reply + 'static, RenderError> {
     Rendered::new(
         render_engine,
         RenderTemplate {

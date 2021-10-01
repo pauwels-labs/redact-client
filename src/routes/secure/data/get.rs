@@ -26,13 +26,13 @@ impl Validate for QueryParams {
     }
 }
 
-pub fn reply<R: Renderer>(
+pub fn reply<'a, R: Renderer>(
     data: Data,
     path: &str,
     token: &str,
     query: QueryParams,
-    render_engine: R,
-) -> Result<impl Reply, RenderError> {
+    render_engine: &'a R,
+) -> Result<impl Reply + 'static, RenderError> {
     let is_binary_data = match data {
         Data::Binary(_) => true,
         _ => query.data_type == Some("media".to_owned()),

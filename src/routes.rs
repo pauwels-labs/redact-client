@@ -5,7 +5,7 @@ pub mod unsecure;
 
 use std::sync::Arc;
 
-use crate::{render::Renderer, token::TokenGenerator};
+use crate::{relayer::Relayer, render::Renderer, token::TokenGenerator};
 
 use self::error::QueryParamValidationRejection;
 pub use error::{
@@ -18,16 +18,27 @@ use regex::Regex;
 use serde::de::DeserializeOwned;
 use warp::{Filter, Rejection, Reply};
 
-pub fn secure<H: Storer, R: Renderer, T: TokenGenerator>(
+pub fn secure<
+    H: Storer,
+    R: Renderer + Clone + Send + Sync + 'static,
+    T: TokenGenerator,
+    Q: Relayer,
+>(
     storer: Arc<H>,
     render_engine: R,
     token_generator: T,
-) -> impl Filter<Extract = (impl Reply, String, Option<String>, Option<String>), Error = Rejection> + Clone
-{
-    warp::path!("secure" / ..).and(secure::data(storer, render_engine, token_generator))
+    relayer: Q,
+) -> impl Filter<Extract = (Box<dyn Reply>, String, Option<String>, Option<String>), Error = Rejection>
+       + Clone {
+    warp::path!("secure" / ..).and(secure::data(
+        storer,
+        render_engine,
+        token_generator,
+        relayer,
+    ))
 }
 
-pub fn unsecure<R: Renderer, T: TokenGenerator>(
+pub fn unsecure<R: Renderer + Clone + Send + Sync + 'static, T: TokenGenerator>(
     token_generator: T,
     render_engine: R,
 ) -> impl Filter<Extract = (impl Reply, String, String), Error = Rejection> + Clone {

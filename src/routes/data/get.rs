@@ -145,7 +145,6 @@ pub fn without_token<S: SessionStore, R: Renderer, T: TokenGenerator>(
                     .map_err(|_| warp::reject())?;
                 session_with_store.cookie_options.path =
                     Some(format!("/data/{}/{}", path_params.path, token));
-
                 Ok::<_, Rejection>((reply, session_with_store))
             },
         )

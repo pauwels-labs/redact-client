@@ -6,15 +6,18 @@ mod render;
 mod routes;
 pub mod token;
 
+use crate::error_handler::handle_rejection;
 use crate::relayer::MutualTLSRelayer;
-use crate::{bootstrap::DistinguishedName, error_handler::handle_rejection};
 use chrono::{prelude::*, Duration};
 use pkcs8::PrivateKeyInfo;
 use redact_config::Configurator;
 use redact_crypto::{
+    cert::setup_cert,
     key::sodiumoxide::{
         SodiumOxideEd25519PublicAsymmetricKey, SodiumOxideEd25519SecretAsymmetricKey,
+        SodiumOxideSymmetricKey,
     },
+    x509::DistinguishedName,
     Entry, HasAlgorithmIdentifier, HasByteSource, HasPublicKey, RedactStorer,
 };
 use render::HandlebarsRenderer;
@@ -74,7 +77,23 @@ async fn main() {
     let storage_url = config.get_str("storage.url").unwrap();
 
     // Get the bootstrap key from config
+    let pkcs12_path = config
+        .get_str("storage.tls.client.pkcs12.filepath")
+        .unwrap();
+    let server_ca_path = config.get_str("storage.tls.server.ca.filepath").unwrap();
+    redact_crypto::storage::redact::ClientTlsConfig {
+        pkcs12_path,
+        server_ca_path,
+    }
+    .make_current();
     let storer_shared = Arc::new(RedactStorer::new(&storage_url));
+    let _: Entry<SodiumOxideSymmetricKey> = bootstrap::setup_entry(
+        &config,
+        "keys.encryption.symmetric.default",
+        &*storer_shared,
+    )
+    .await
+    .unwrap();
     let root_signing_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
         bootstrap::setup_entry(&config, "keys.signing.root", &*storer_shared)
             .await
@@ -109,17 +128,17 @@ async fn main() {
                             .get_int("certificates.signing.root.expires_in")
                             .unwrap(),
                     );
-                let root_signing_cert =
-                    bootstrap::setup_cert::<_, SodiumOxideEd25519PublicAsymmetricKey>(
-                        root_signing_key,
-                        None,
-                        &signing_cert_dn,
-                        None,
-                        not_before,
-                        not_after,
-                        true,
-                    )
-                    .unwrap();
+                let root_signing_cert = setup_cert::<_, SodiumOxideEd25519PublicAsymmetricKey>(
+                    root_signing_key,
+                    None,
+                    &signing_cert_dn,
+                    None,
+                    not_before,
+                    not_after,
+                    true,
+                    None,
+                )
+                .unwrap();
                 let mut root_signing_cert_file = File::create(
                     config
                         .get_str("certificates.signing.root.filepath")
@@ -163,7 +182,7 @@ async fn main() {
                             .get_int("certificates.signing.tls.expires_in")
                             .unwrap(),
                     );
-                let tls_cert = bootstrap::setup_cert(
+                let tls_cert = setup_cert(
                     root_signing_key,
                     Some(&tls_key.public_key().unwrap()),
                     &signing_cert_dn,
@@ -171,6 +190,7 @@ async fn main() {
                     not_before,
                     not_after,
                     false,
+                    None,
                 )
                 .unwrap();
                 let mut tls_cert_vec: Vec<u8> = vec![];
@@ -262,8 +282,8 @@ async fn main() {
         .with(unsecure_cors_post.clone());
 
     let routes = health_route
-        .or(get_routes)
         .or(post_routes)
+        .or(get_routes)
         .or(proxy_routes)
         .with(warp::log("routes"))
         .recover(handle_rejection);

@@ -565,6 +565,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44c32f031ea41b4291d695026c023b95d59db2d8a2c7640800ed56bc8f510f22"
 
 [[package]]
+name = "const-oid"
+version = "0.6.1"
+source = "git+https://github.com/rustcrypto/formats.git?rev=fddda3dadc50e2ddbc1f1763dda1b3449ad22b40#fddda3dadc50e2ddbc1f1763dda1b3449ad22b40"
+
+[[package]]
 name = "constant_time_eq"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -684,19 +689,26 @@ checksum = "3ee2393c4a91429dffb4bedf19f4d6abf27d8a732c8ce4980305d782e5426d57"
 
 [[package]]
 name = "der"
-version = "0.4.1"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31e21d2d0f22cde6e88694108429775c0219760a07779bf96503b434a03d7412"
+checksum = "2adca118c71ecd9ae094d4b68257b3fdfcb711a612b9eec7b5a0d27a5a70a5b4"
 dependencies = [
- "const-oid",
+ "const-oid 0.6.0",
+]
+
+[[package]]
+name = "der"
+version = "0.4.3"
+source = "git+https://github.com/rustcrypto/formats.git?rev=fddda3dadc50e2ddbc1f1763dda1b3449ad22b40#fddda3dadc50e2ddbc1f1763dda1b3449ad22b40"
+dependencies = [
+ "const-oid 0.6.1",
  "der_derive",
 ]
 
 [[package]]
 name = "der_derive"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5360db9da81e4727cb5291894e533c83f67b490e2fe51e9ed9f6b3f6b0fa865a"
+version = "0.4.1"
+source = "git+https://github.com/rustcrypto/formats.git?rev=fddda3dadc50e2ddbc1f1763dda1b3449ad22b40#fddda3dadc50e2ddbc1f1763dda1b3449ad22b40"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2157,7 +2169,7 @@ version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbee84ed13e44dd82689fa18348a49934fa79cc774a344c42fc9b301c71b140a"
 dependencies = [
- "der",
+ "der 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "pem-rfc7468",
  "spki",
  "zeroize",
@@ -2409,12 +2421,9 @@ dependencies = [
  "bson 1.2.3",
  "bytes 1.1.0",
  "chrono",
- "cookie-factory",
- "der",
  "futures",
  "handlebars",
  "http",
- "hyper 0.14.12",
  "itertools",
  "mockall 0.9.1",
  "mockito",
@@ -2429,10 +2438,8 @@ dependencies = [
  "reqwest 0.11.4",
  "serde 1.0.130",
  "serde_json",
- "sha-1 0.9.8",
  "sha2",
  "sodiumoxide",
- "spki",
  "strum",
  "thiserror",
  "tokio 1.11.0",
@@ -2440,7 +2447,6 @@ dependencies = [
  "uuid",
  "warp",
  "warp-sessions",
- "x509",
 ]
 
 [[package]]
@@ -2455,26 +2461,28 @@ dependencies = [
 
 [[package]]
 name = "redact-crypto"
-version = "2.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6628e11bcb5bd4d17d05340dacf5eafc4f28dabc275fec4b86b4a3cca8eef57"
+version = "0.1.0"
+source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=ad23271a9e0ff719de56ea8ec6132c6ebc37ad2f#ad23271a9e0ff719de56ea8ec6132c6ebc37ad2f"
 dependencies = [
  "async-recursion",
  "async-trait",
  "base64 0.13.0",
+ "chrono",
  "cloud-storage",
  "cookie-factory",
- "der",
+ "der 0.4.3 (git+https://github.com/rustcrypto/formats.git?rev=fddda3dadc50e2ddbc1f1763dda1b3449ad22b40)",
  "futures",
  "hex",
  "mockall 0.10.2",
  "mongodb 2.0.0",
  "once_cell",
+ "rand 0.8.4",
  "reqwest 0.11.4",
  "ring",
  "serde 1.0.130",
  "serde_bytes",
  "serde_json",
+ "sha-1 0.9.8",
  "sodiumoxide",
  "spki",
  "strum",
@@ -2957,7 +2965,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "987637c5ae6b3121aba9d513f869bd2bff11c4cc086c22473befd6649c0bd521"
 dependencies = [
- "der",
+ "der 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

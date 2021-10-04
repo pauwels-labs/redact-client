@@ -16,7 +16,14 @@ certificates:
       expires_in: 365
       filepath: "certs/client-tls.pem"
 storage:
-  url: http://localhost:8081
+  url: https://localhost:8081
+  tls:
+    client:
+      pkcs12:
+        filepath: "keys/private/client-tls.p12.pem"
+    server:
+      ca:
+        filepath: "certs/storer-ca.pem"
 keys:
   encryption:
     symmetric:

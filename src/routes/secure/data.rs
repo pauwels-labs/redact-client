@@ -195,7 +195,7 @@ pub fn post<R: Renderer + Clone + Send + 'static, T: TokenGenerator, H: Storer, 
                     relayer
                         .relay(path.clone(), relay_url)
                         .await
-                        .map_err(|e| warp::reject::custom(RelayRejection))?;
+                        .map_err(|_| warp::reject::custom(RelayRejection))?;
                 }
 
                 let reply = post::reply(data, &path, &new_token, query, &render_engine)?;

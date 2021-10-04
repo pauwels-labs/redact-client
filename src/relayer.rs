@@ -56,6 +56,7 @@ impl MutualTLSRelayer {
 
         let mut client_builder = reqwest::Client::builder().identity(pkcs12).use_rustls_tls();
         if let Some(roots) = additional_roots {
+            client_builder = client_builder.tls_built_in_root_certs(false);
             for cert in roots.iter() {
                 client_builder = client_builder.add_root_certificate(cert.clone())
             }

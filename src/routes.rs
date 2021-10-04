@@ -18,6 +18,13 @@ use regex::Regex;
 use serde::de::DeserializeOwned;
 use warp::{Filter, Rejection, Reply};
 
+pub fn unsecure<R: Renderer + Clone + Send + Sync + 'static, T: TokenGenerator>(
+    token_generator: T,
+    render_engine: R,
+) -> impl Filter<Extract = (impl Reply, String, String), Error = Rejection> + Clone {
+    warp::path!("unsecure" / ..).and(unsecure::data(token_generator, render_engine))
+}
+
 pub fn secure<
     H: Storer,
     R: Renderer + Clone + Send + Sync + 'static,
@@ -38,11 +45,10 @@ pub fn secure<
     ))
 }
 
-pub fn unsecure<R: Renderer + Clone + Send + Sync + 'static, T: TokenGenerator>(
-    token_generator: T,
-    render_engine: R,
-) -> impl Filter<Extract = (impl Reply, String, String), Error = Rejection> + Clone {
-    warp::path!("unsecure" / ..).and(unsecure::data(token_generator, render_engine))
+pub fn proxy<R: Relayer>(
+    relayer: R,
+) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
+    warp::path!("proxy").and(proxy::post(relayer))
 }
 
 pub trait Validate {

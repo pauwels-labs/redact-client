@@ -3,7 +3,6 @@ use crate::relayer::Relayer;
 use crate::routes::error::{ProxyRejection, RelayRejection};
 use addr::parser::DomainName;
 use addr::psl::List;
-use reqwest;
 use serde::{Deserialize, Serialize};
 use url::Url;
 use warp::http::HeaderValue;
@@ -17,8 +16,7 @@ struct ProxyBodyParams {
 pub fn post<Q: Relayer>(
     relayer: Q,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
-    warp::any()
-        .and(warp::path!("proxy"))
+    warp::post()
         .and(warp::filters::body::json::<ProxyBodyParams>())
         .and(warp::header::<String>("Origin"))
         .and(warp::any().map(move || relayer.clone()))
@@ -29,13 +27,19 @@ pub fn post<Q: Relayer>(
                 let dest_root = parse_url_root(&body_params.host_url)
                     .map_err(|_| warp::reject::custom(RelayRejection))?;
 
+                println!(
+                    "{:?} =/= {:?}, {}",
+                    origin_root, dest_root, &body_params.host_url
+                );
                 if dest_root != origin_root {
+                    println!("not relaying");
                     Err(warp::reject::custom(RelayRejection))
                 } else {
-                    relayer
-                        .get(body_params.host_url)
-                        .await
-                        .map_err(|e| warp::reject::custom(RelayRejection))
+                    println!("relaying");
+                    relayer.get(body_params.host_url).await.map_err(|e| {
+                        println!("{:?}", e);
+                        warp::reject::custom(RelayRejection)
+                    })
                 }
             },
         )

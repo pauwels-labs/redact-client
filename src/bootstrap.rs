@@ -1,10 +1,20 @@
-use crate::error::ClientError;
+use crate::{
+    error::ClientError,
+    render::{HandlebarsRenderer, RenderError},
+};
 use redact_config::Configurator;
 use redact_crypto::{
     Algorithm, Builder, CryptoError, Entry, HasBuilder, State, StorableType, Storer,
     TypeBuilderContainer,
 };
-use std::convert::TryInto;
+use std::{collections::HashMap, convert::TryInto};
+
+pub fn setup_html_render_engine<'reg>() -> Result<HandlebarsRenderer<'reg>, RenderError> {
+    let mut template_mapping = HashMap::new();
+    template_mapping.insert("unsecure", "./static/unsecure.handlebars");
+    template_mapping.insert("secure", "./static/secure.handlebars");
+    HandlebarsRenderer::new(template_mapping)
+}
 
 pub async fn setup_entry<Z: StorableType, T: Configurator, S: Storer>(
     config: &T,

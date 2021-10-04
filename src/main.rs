@@ -21,6 +21,7 @@ use redact_crypto::{
     Entry, HasAlgorithmIdentifier, HasByteSource, HasPublicKey, RedactStorer,
 };
 use render::HandlebarsRenderer;
+use reqwest::Certificate;
 use serde::Serialize;
 use std::{
     collections::HashMap,
@@ -229,8 +230,20 @@ async fn main() {
     }
 
     // Create a relay client which supports mutual TLS
-    let relayer =
-        MutualTLSRelayer::new(config.get_str("relayer.certificate.filepath").unwrap()).unwrap();
+    let relayer_root = config
+        .get_str("relayer.tls.server.ca.filepath")
+        .ok()
+        .map(|path| {
+            let read_bytes = std::fs::read(path).unwrap();
+            vec![Certificate::from_pem(read_bytes.as_slice()).unwrap()]
+        });
+    let relayer = MutualTLSRelayer::new(
+        config
+            .get_str("relayer.tls.client.pkcs12.filepath")
+            .unwrap(),
+        relayer_root.as_deref(),
+    )
+    .unwrap();
 
     // Create an in-memory session store
     let session_store = MemoryStore::new();
@@ -251,7 +264,9 @@ async fn main() {
         .allow_methods(vec!["GET", "POST"]);
 
     // Build out routes
-    let health_route = warp::path!("healthz").map(|| warp::reply::json(&Healthz {}));
+    let health_route = warp::path!("healthz")
+        .map(|| warp::reply::json(&Healthz {}))
+        .with(unsecure_cors.clone());
     let post_routes = warp::post()
         .and(routes::data::post::submit_data(
             session_store.clone(),
@@ -268,13 +283,13 @@ async fn main() {
             token_generator.clone(),
             storer_shared.clone(),
         )
-        .with(unsecure_cors.clone())
+        .with(secure_cors.clone())
         .or(routes::data::get::without_token(
             session_store.clone(),
             render_engine.clone(),
             token_generator.clone(),
         )
-        .with(secure_cors)),
+        .with(unsecure_cors)),
     );
 
     let proxy_routes = warp::any()

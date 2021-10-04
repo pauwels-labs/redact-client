@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use http::StatusCode;
-use reqwest::Response;
+use reqwest::{Certificate, Response};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
@@ -43,7 +43,10 @@ pub struct MutualTLSRelayer {
 }
 
 impl MutualTLSRelayer {
-    pub fn new(pem_file_path: String) -> Result<MutualTLSRelayer, RelayError> {
+    pub fn new(
+        pem_file_path: String,
+        additional_roots: Option<&[Certificate]>,
+    ) -> Result<MutualTLSRelayer, RelayError> {
         let mut buf = Vec::new();
         File::open(pem_file_path)
             .unwrap()
@@ -51,13 +54,15 @@ impl MutualTLSRelayer {
             .unwrap();
         let pkcs12 = reqwest::Identity::from_pem(&buf).unwrap();
 
-        let client = reqwest::Client::builder()
-            .identity(pkcs12)
-            .use_rustls_tls()
-            .build()
-            .unwrap();
-
-        Ok(MutualTLSRelayer { client })
+        let mut client_builder = reqwest::Client::builder().identity(pkcs12).use_rustls_tls();
+        if let Some(roots) = additional_roots {
+            for cert in roots.iter() {
+                client_builder = client_builder.add_root_certificate(cert.clone())
+            }
+        }
+        Ok(MutualTLSRelayer {
+            client: client_builder.build().unwrap(),
+        })
     }
 }
 

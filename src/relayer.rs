@@ -45,8 +45,9 @@ pub struct MutualTLSRelayer {
 impl MutualTLSRelayer {
     pub fn new(
         pem_file_path: String,
-        additional_roots: Option<&[Certificate]>,
+        additional_ca_certs: Option<&[Certificate]>,
     ) -> Result<MutualTLSRelayer, RelayError> {
+        // Load the client TLS certificate and key
         let mut buf = Vec::new();
         File::open(pem_file_path)
             .unwrap()
@@ -54,10 +55,12 @@ impl MutualTLSRelayer {
             .unwrap();
         let pkcs12 = reqwest::Identity::from_pem(&buf).unwrap();
 
+        // Build the relay HTTP client, adding in provided certificate as additional CA certs
         let mut client_builder = reqwest::Client::builder().identity(pkcs12).use_rustls_tls();
-        if let Some(roots) = additional_roots {
+        if let Some(ca_certs) = additional_ca_certs {
+            // In order for the additional certs to be used, the built-in root certs must be disabled
             client_builder = client_builder.tls_built_in_root_certs(false);
-            for cert in roots.iter() {
+            for cert in ca_certs.iter() {
                 client_builder = client_builder.add_root_certificate(cert.clone())
             }
         }

@@ -205,44 +205,7 @@ pub fn post<R: Renderer + Clone + Send + 'static, T: TokenGenerator, H: Storer, 
                     Some(format!("/secure/data/{}/{}", &path, &new_token)),
                     Some(new_token),
                 ))
-
-                //     match session_with_store.session.get("token") {
-                //         Some::<String>(session_token) => {
-                //             if session_token != path_params.token {
-                //                 Err(warp::reject::custom(IframeTokensDoNotMatchRejection))
-                //             } else {
-
-                //                 Ok::<_, Rejection>((
-                //                     Rendered::new(
-                //                         render_engine,
-                //                         RenderTemplate {
-                //                             name: "secure",
-                //                             value: TemplateValues::Secure(SecureTemplateValues {
-                //                                 data: Some(data),
-                //                                 path: Some(path.clone()),
-                //                                 token: Some(token.clone()),
-                //                                 css: query_params.css,
-                //                                 edit: query_params.edit,
-                //                                 data_type: query_params.data_type,
-                //                                 relay_url: query_params.relay_url,
-                //                                 js_message: query_params.js_message,
-                //                                 js_height_msg_prefix: query_params.js_height_msg_prefix,
-                //                                 is_binary_data: false,
-                //                             }),
-                //                         },
-                //                     )?,
-                //                     path_params,
-                //                     token,
-                //                     session_with_store,
-                //                 ))
-                //             }
-                //         }
-                //         None => Err(warp::reject::custom(SessionTokenNotFoundRejection)),
-                //     }
             },
         )
         .untuple_one()
-    // .and_then(build_session)
-    // .untuple_one()
-    // .and_then(warp_sessions::reply::with_session)
 }

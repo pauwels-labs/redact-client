@@ -66,7 +66,7 @@ pub fn get<R: Renderer + Clone + Send + 'static, H: Storer, T: TokenGenerator>(
                 };
 
                 let new_path: Option<String> = match query.edit {
-                    Some(true) => Some(format!("/secure/data/{}/{}", &path, &new_token)),
+                    Some(true) => Some(format!("/secure/data/{}", &new_token)),
                     _ => None,
                 };
 

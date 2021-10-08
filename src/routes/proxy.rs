@@ -3,7 +3,6 @@ use crate::relayer::Relayer;
 use crate::routes::error::{ProxyRejection, RelayRejection};
 use addr::parser::DomainName;
 use addr::psl::List;
-use reqwest;
 use serde::{Deserialize, Serialize};
 use url::Url;
 use warp::http::HeaderValue;
@@ -17,8 +16,7 @@ struct ProxyBodyParams {
 pub fn post<Q: Relayer>(
     relayer: Q,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
-    warp::any()
-        .and(warp::path!("proxy"))
+    warp::post()
         .and(warp::filters::body::json::<ProxyBodyParams>())
         .and(warp::header::<String>("Origin"))
         .and(warp::any().map(move || relayer.clone()))

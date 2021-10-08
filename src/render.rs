@@ -5,9 +5,9 @@ use handlebars::{
 use itertools::free::join;
 use redact_crypto::{BinaryType, Data};
 use serde::Serialize;
-use std::convert::From;
 use std::ops::Deref;
 use std::{collections::HashMap, sync::Arc};
+use std::{convert::From, path::Path};
 use strum::IntoEnumIterator;
 use thiserror::Error;
 use warp::{reject::Reject, Reply};
@@ -31,7 +31,6 @@ pub enum TemplateValues {
 #[derive(Serialize, Debug, Default, PartialEq)]
 pub struct UnsecureTemplateValues {
     pub path: String,
-    pub token: String,
     pub css: Option<String>,
     pub edit: Option<bool>,
     pub data_type: Option<String>,
@@ -71,7 +70,7 @@ pub struct Rendered {
 
 impl Rendered {
     pub fn new<E: Renderer>(
-        render_engine: E,
+        render_engine: &E,
         render_template: RenderTemplate,
     ) -> Result<Rendered, RenderError> {
         let reply = warp::reply::html(render_engine.render(render_template)?);
@@ -190,14 +189,14 @@ fn data_input(
             out.write("<input type=\"hidden\" name=\"value_type\" value=\"media\">")?;
             out.write(&format!(
                 "<input type=\"file\" class=\"file\" name=\"value\" accept=\"{}\"autofocus>",
-                &join(BinaryType::iter(), &",")
+                &join(BinaryType::iter(), ",")
             ))
         }
     }
     .map_err(|e| e.into())
 }
 
-pub trait Renderer: Clone + Send + Sync {
+pub trait Renderer {
     fn render(&self, template: RenderTemplate) -> Result<String, RenderError>;
 }
 
@@ -210,14 +209,14 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct HandlebarsRenderer<'reg> {
-    hbs: Arc<Handlebars<'reg>>,
+    hbs: Handlebars<'reg>,
 }
 
 impl<'reg> HandlebarsRenderer<'reg> {
-    pub fn new(
-        template_mapping: HashMap<&str, &str>,
+    pub fn new<P: AsRef<Path>>(
+        template_mapping: HashMap<&str, P>,
     ) -> Result<HandlebarsRenderer<'reg>, RenderError> {
         let mut hbs = Handlebars::new();
         for (key, val) in template_mapping.iter() {
@@ -225,7 +224,7 @@ impl<'reg> HandlebarsRenderer<'reg> {
         }
         hbs.register_helper("data_input", Box::new(data_input));
         hbs.register_helper("data_display", Box::new(data_display));
-        Ok(HandlebarsRenderer { hbs: Arc::new(hbs) })
+        Ok(HandlebarsRenderer { hbs })
     }
 }
 

@@ -20,11 +20,9 @@ use redact_crypto::{
     x509::DistinguishedName,
     Entry, HasAlgorithmIdentifier, HasByteSource, HasPublicKey, RedactStorer,
 };
-use render::HandlebarsRenderer;
 use reqwest::Certificate;
 use serde::Serialize;
 use std::{
-    collections::HashMap,
     fs::File,
     io::{ErrorKind, Write},
     sync::Arc,
@@ -68,16 +66,10 @@ async fn main() {
     // Determine port to listen on
     let port = get_port(&config);
 
-    // Load HTML templates
-    let mut template_mapping = HashMap::new();
-    template_mapping.insert("unsecure", "./static/unsecure.handlebars");
-    template_mapping.insert("secure", "./static/secure.handlebars");
-    let render_engine = HandlebarsRenderer::new(template_mapping).unwrap();
+    // Fetch HTML template renderer and load pre-defined templates into it
+    let render_engine = Arc::new(bootstrap::setup_html_render_engine().unwrap());
 
-    // Get storage handle
-    let storage_url = config.get_str("storage.url").unwrap();
-
-    // Get the bootstrap key from config
+    // Setup mTLS configuration for all calls to a Redact storer
     let pkcs12_path = config
         .get_str("storage.tls.client.pkcs12.filepath")
         .unwrap();
@@ -87,7 +79,11 @@ async fn main() {
         server_ca_path,
     }
     .make_current();
-    let storer_shared = Arc::new(RedactStorer::new(&storage_url));
+
+    // Create the internally-used Redact storer; this is the self-storer
+    let storer_shared = Arc::new(RedactStorer::new(&config.get_str("storage.url").unwrap()));
+
+    // Create the default encryption key if it doesn't exist
     let _: Entry<SodiumOxideSymmetricKey> = bootstrap::setup_entry(
         &config,
         "keys.encryption.symmetric.default",
@@ -95,18 +91,22 @@ async fn main() {
     )
     .await
     .unwrap();
+
+    // Fetch or create the root signing key from which all other identities will be derived
     let root_signing_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
         bootstrap::setup_entry(&config, "keys.signing.root", &*storer_shared)
             .await
             .unwrap();
     let root_signing_key = root_signing_key_entry.resolve().await.unwrap();
+
+    // Fetch or create the key that will be used for initiating client TLS connections
     let tls_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
         bootstrap::setup_entry(&config, "keys.signing.tls", &*storer_shared)
             .await
             .unwrap();
     let tls_key = tls_key_entry.resolve().await.unwrap();
 
-    // Make the root signing cert if it doesn't already exist
+    // Create the certificate for the signing key if it doesn't already exist
     let signing_cert_o = config.get_str("certificates.signing.root.o").unwrap();
     let signing_cert_ou = config.get_str("certificates.signing.root.ou").unwrap();
     let signing_cert_cn = config.get_str("certificates.signing.root.cn").unwrap();
@@ -245,10 +245,10 @@ async fn main() {
     )
     .unwrap();
 
-    // Create an in-memory session store
+    // Create an in-memory session store for managing secure client sessions
     let session_store = MemoryStore::new();
 
-    // Create a token generator
+    // Create a token generator for generating the iframe tokens
     let token_generator = FromThreadRng::new();
 
     // Create a CORS filter for the insecure routes that allows any origin
@@ -263,42 +263,38 @@ async fn main() {
         .allow_origin("http://localhost:8080")
         .allow_methods(vec!["GET", "POST"]);
 
-    // Build out routes
+    // Simple health-check route
     let health_route = warp::path!("healthz")
+        .and(warp::get())
         .map(|| warp::reply::json(&Healthz {}))
         .with(unsecure_cors.clone());
-    let post_routes = warp::post()
-        .and(routes::data::post::submit_data(
-            session_store.clone(),
-            render_engine.clone(),
-            token_generator.clone(),
-            storer_shared.clone(),
-            relayer.clone(),
-        ))
-        .with(secure_cors.clone());
-    let get_routes = warp::get().and(
-        routes::data::get::with_token(
-            session_store.clone(),
-            render_engine.clone(),
-            token_generator.clone(),
-            storer_shared.clone(),
-        )
-        .with(secure_cors.clone())
-        .or(routes::data::get::without_token(
-            session_store.clone(),
-            render_engine.clone(),
-            token_generator.clone(),
-        )
-        .with(unsecure_cors)),
-    );
 
-    let proxy_routes = warp::any()
-        .and(warp::post().and(routes::proxy::post(relayer)))
-        .with(unsecure_cors_post.clone());
+    // Routes called with no CSRF token, hosts iframes to routes with CSRF protection
+    let unsecure_routes = routes::unsecure(token_generator.clone(), render_engine.clone())
+        .with(warp::wrap_fn(routes::unsecure::session(
+            session_store.clone(),
+        )))
+        .with(unsecure_cors);
 
+    // Routes called with a CSRF token, only to be called by the client itself
+    let secure_routes = routes::secure(
+        storer_shared.clone(),
+        render_engine.clone(),
+        token_generator.clone(),
+        relayer.clone(),
+    )
+    .with(warp::wrap_fn(routes::secure::session(
+        session_store.clone(),
+    )))
+    .with(secure_cors.clone());
+
+    // Routes for an external website to trigger requests from the client to itself
+    let proxy_routes = routes::proxy(relayer).with(unsecure_cors_post.clone());
+
+    // Assemble all routes into one handler
     let routes = health_route
-        .or(post_routes)
-        .or(get_routes)
+        .or(unsecure_routes)
+        .or(secure_routes)
         .or(proxy_routes)
         .with(warp::log("routes"))
         .recover(handle_rejection);

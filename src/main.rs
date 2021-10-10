@@ -25,6 +25,7 @@ use serde::Serialize;
 use std::{
     fs::File,
     io::{ErrorKind, Write},
+    path::Path,
     sync::Arc,
 };
 use token::FromThreadRng;
@@ -68,17 +69,6 @@ async fn main() {
 
     // Fetch HTML template renderer and load pre-defined templates into it
     let render_engine = Arc::new(bootstrap::setup_html_render_engine().unwrap());
-
-    // Setup mTLS configuration for all calls to a Redact storer
-    let pkcs12_path = config
-        .get_str("storage.tls.client.pkcs12.filepath")
-        .unwrap();
-    let server_ca_path = config.get_str("storage.tls.server.ca.filepath").unwrap();
-    redact_crypto::storage::redact::ClientTlsConfig {
-        pkcs12_path,
-        server_ca_path,
-    }
-    .make_current();
 
     // Create the internally-used Redact storer; this is the self-storer
     let storer_shared = Arc::new(RedactStorer::new(&config.get_str("storage.url").unwrap()));
@@ -140,12 +130,16 @@ async fn main() {
                     None,
                 )
                 .unwrap();
-                let mut root_signing_cert_file = File::create(
-                    config
-                        .get_str("certificates.signing.root.filepath")
-                        .unwrap(),
-                )
-                .unwrap();
+                let path_str = &config
+                    .get_str("certificates.signing.root.filepath")
+                    .unwrap();
+
+                let path = Path::new(path_str);
+                let path_parent = path.parent();
+                if let Some(path) = path_parent {
+                    std::fs::create_dir_all(path).unwrap();
+                }
+                let mut root_signing_cert_file = File::create(path).unwrap();
                 root_signing_cert_file
                     .write_all(b"-----BEGIN CERTIFICATE-----\n")
                     .unwrap();
@@ -165,7 +159,8 @@ async fn main() {
     }
 
     // Make the TLS cert and PKCS12 file if it doesn't exist
-    if let Err(e) = File::open(config.get_str("certificates.signing.tls.filepath").unwrap()) {
+    let tls_cert_path_str = config.get_str("certificates.signing.tls.filepath").unwrap();
+    if let Err(e) = File::open(&tls_cert_path_str) {
         match e.kind() {
             ErrorKind::NotFound => {
                 let encryption_cert_o = config.get_str("certificates.signing.tls.o").unwrap();
@@ -195,9 +190,14 @@ async fn main() {
                 )
                 .unwrap();
                 let mut tls_cert_vec: Vec<u8> = vec![];
-                let mut tls_cert_file =
-                    File::create(config.get_str("certificates.signing.tls.filepath").unwrap())
-                        .unwrap();
+                let path_str = &config.get_str("certificates.signing.tls.filepath").unwrap();
+
+                let path = Path::new(path_str);
+                let path_parent = path.parent();
+                if let Some(path) = path_parent {
+                    std::fs::create_dir_all(path).unwrap();
+                }
+                let mut tls_cert_file = File::create(path).unwrap();
                 tls_cert_vec
                     .write_all(b"-----BEGIN CERTIFICATE-----\n")
                     .unwrap();
@@ -212,22 +212,48 @@ async fn main() {
                     .write_all(b"-----END CERTIFICATE-----\n")
                     .unwrap();
                 tls_cert_file.write_all(&tls_cert_vec).unwrap();
+            }
+            _ => Err(e).unwrap(),
+        }
+    }
 
+    let pkcs12_path_str = &config
+        .get_str("relayer.tls.client.pkcs12.filepath")
+        .unwrap();
+    if let Err(e) = File::open(pkcs12_path_str) {
+        match e.kind() {
+            ErrorKind::NotFound => {
                 let tls_key_bs = tls_key.byte_source();
                 let mut tls_key_bytes = vec![0x04, 0x20];
                 tls_key_bytes.extend_from_slice(&tls_key_bs.get().unwrap()[0..32]);
                 let tls_key_pkcs8 =
                     PrivateKeyInfo::new(tls_key.algorithm_identifier(), &tls_key_bytes);
-                let mut pkcs12_file =
-                    File::create(config.get_str("relayer.certificate.filepath").unwrap()).unwrap();
-                pkcs12_file.write_all(&tls_cert_vec).unwrap();
+                let pkcs12_path = Path::new(pkcs12_path_str);
+                let pkcs12_path_parent = pkcs12_path.parent();
+                if let Some(path) = pkcs12_path_parent {
+                    std::fs::create_dir_all(path).unwrap();
+                }
+                let tls_cert_bytes = std::fs::read(&tls_cert_path_str).unwrap();
+                let mut pkcs12_file = File::create(pkcs12_path).unwrap();
+                pkcs12_file.write_all(&tls_cert_bytes).unwrap();
                 pkcs12_file
                     .write_all((*tls_key_pkcs8.to_pem()).as_bytes())
                     .unwrap();
             }
             _ => Err(e).unwrap(),
         }
+    };
+
+    // Setup mTLS configuration for all calls to a Redact storer
+    let pkcs12_path = config
+        .get_str("storage.tls.client.pkcs12.filepath")
+        .unwrap();
+    let server_ca_path = config.get_str("storage.tls.server.ca.filepath").unwrap();
+    redact_crypto::storage::redact::ClientTlsConfig {
+        pkcs12_path,
+        server_ca_path,
     }
+    .make_current();
 
     // Create a relay client which supports mutual TLS
     let relayer_root = config

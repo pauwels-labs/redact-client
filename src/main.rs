@@ -18,7 +18,7 @@ use redact_crypto::{
         SodiumOxideSymmetricKey,
     },
     x509::DistinguishedName,
-    Entry, HasAlgorithmIdentifier, HasByteSource, HasPublicKey, RedactStorer,
+    Entry, HasAlgorithmIdentifier, HasByteSource, HasPublicKey, RedactStorer, Storer,
 };
 use reqwest::Certificate;
 use serde::Serialize;
@@ -73,25 +73,16 @@ async fn main() {
     // Create the internally-used Redact storer; this is the self-storer
     let storer_shared = Arc::new(RedactStorer::new(&config.get_str("storage.url").unwrap()));
 
-    // Create the default encryption key if it doesn't exist
-    let _: Entry<SodiumOxideSymmetricKey> = bootstrap::setup_entry(
-        &config,
-        "keys.encryption.symmetric.default",
-        &*storer_shared,
-    )
-    .await
-    .unwrap();
-
     // Fetch or create the root signing key from which all other identities will be derived
     let root_signing_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
-        bootstrap::setup_entry(&config, "keys.signing.root", &*storer_shared)
+        bootstrap::setup_entry(&config, "keys.signing.root")
             .await
             .unwrap();
     let root_signing_key = root_signing_key_entry.resolve().await.unwrap();
 
     // Fetch or create the key that will be used for initiating client TLS connections
     let tls_key_entry: Entry<SodiumOxideEd25519SecretAsymmetricKey> =
-        bootstrap::setup_entry(&config, "keys.signing.tls", &*storer_shared)
+        bootstrap::setup_entry(&config, "keys.signing.tls")
             .await
             .unwrap();
     let tls_key = tls_key_entry.resolve().await.unwrap();
@@ -254,6 +245,16 @@ async fn main() {
         server_ca_path,
     }
     .make_current();
+
+    // Create the default encryption key if it doesn't exist
+    let default_encryption_key_entry: Entry<SodiumOxideSymmetricKey> =
+        bootstrap::setup_entry(&config, "keys.encryption.symmetric.default")
+            .await
+            .unwrap();
+    storer_shared
+        .create(default_encryption_key_entry)
+        .await
+        .unwrap();
 
     // Create a relay client which supports mutual TLS
     let relayer_root = config

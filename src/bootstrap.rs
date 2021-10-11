@@ -4,8 +4,7 @@ use crate::{
 };
 use redact_config::Configurator;
 use redact_crypto::{
-    Algorithm, Builder, CryptoError, Entry, HasBuilder, State, StorableType, Storer,
-    TypeBuilderContainer,
+    Algorithm, Builder, CryptoError, Entry, HasBuilder, State, StorableType, TypeBuilderContainer,
 };
 use std::{collections::HashMap, convert::TryInto};
 
@@ -16,10 +15,9 @@ pub fn setup_html_render_engine<'reg>() -> Result<HandlebarsRenderer<'reg>, Rend
     HandlebarsRenderer::new(template_mapping)
 }
 
-pub async fn setup_entry<Z: StorableType, T: Configurator, S: Storer>(
+pub async fn setup_entry<Z: StorableType, T: Configurator>(
     config: &T,
     config_path: &str,
-    storer: &S,
 ) -> Result<Entry<Z>, ClientError> {
     let mut entry = config
         .get::<Entry<Z>>(config_path)
@@ -43,10 +41,7 @@ pub async fn setup_entry<Z: StorableType, T: Configurator, S: Storer>(
                                 .map_err(|e| ClientError::SourceError { source: e })?,
                         )
                         .map_err(|e| ClientError::SourceError { source: e })?;
-                    Ok(storer
-                        .create(entry)
-                        .await
-                        .map_err(|e| ClientError::CryptoError { source: e })?)
+                    Ok(entry)
                 }
                 State::Sealed {
                     ref mut ciphertext,
@@ -69,10 +64,7 @@ pub async fn setup_entry<Z: StorableType, T: Configurator, S: Storer>(
                                 .map_err(|e| ClientError::SourceError { source: e })?,
                         )
                         .map_err(|e| ClientError::SourceError { source: e })?;
-                    Ok(storer
-                        .create(entry)
-                        .await
-                        .map_err(|e| ClientError::CryptoError { source: e })?)
+                    Ok(entry)
                 }
             },
             _ => Err(ClientError::CryptoError { source: e }),

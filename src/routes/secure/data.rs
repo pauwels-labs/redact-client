@@ -66,7 +66,7 @@ pub fn get<R: Renderer + Clone + Send + 'static, H: Storer, T: TokenGenerator>(
                 };
 
                 let new_path: Option<String> = match query.edit {
-                    Some(true) => Some(format!("/secure/data/{}", &new_token)),
+                    Some(true) => Some(format!("/secure/data/{}/{}", &path, &new_token)),
                     _ => None,
                 };
 
@@ -90,7 +90,7 @@ pub fn post<R: Renderer + Clone + Send + 'static, T: TokenGenerator, H: Storer, 
 ) -> impl Filter<Extract = (Box<dyn Reply>, String, Option<String>, Option<String>), Error = Rejection>
        + Clone {
     warp::post()
-        .and(warp::path!(String))
+        .and(warp::path!(String / String))
         .and(warp::query::<post::QueryParams>())
         .and(
             warp::filters::body::form::<post::BodyParams>()
@@ -169,7 +169,8 @@ pub fn post<R: Renderer + Clone + Send + 'static, T: TokenGenerator, H: Storer, 
         .and(warp::any().map(move || storer.clone()))
         .and(warp::any().map(move || relayer.clone()))
         .and_then(
-            move |old_token: String,
+            move |_query_data_path: String,
+                  old_token: String,
                   query: post::QueryParams,
                   (data, path): (Data, String),
                   new_token: String,

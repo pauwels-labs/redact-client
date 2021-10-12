@@ -3,7 +3,10 @@ pub mod post;
 
 use bytes::buf::BufMut;
 use futures::TryStreamExt;
-use redact_crypto::{BinaryData, BinaryType, CryptoError, Data, Storer, SymmetricKey, ToEntry};
+use redact_crypto::{
+    BinaryData, BinaryType, CryptoError, Data, Storer, SymmetricKey, ToEntry,
+    ToSymmetricByteAlgorithm,
+};
 use std::{convert::TryFrom, sync::Arc};
 use warp::{multipart::FormData, Filter, Rejection, Reply};
 
@@ -181,8 +184,15 @@ pub fn post<R: Renderer + Clone + Send + 'static, T: TokenGenerator, H: Storer, 
                     .get::<SymmetricKey>(".keys.encryption.symmetric.default.")
                     .await
                     .map_err(CryptoErrorRejection)?;
-                let key_algo = key_entry
-                    .to_symmetric_byte_algorithm(None)
+                let (key, key_entry_path, _) = key_entry
+                    .take_resolve_all()
+                    .await
+                    .map_err(CryptoErrorRejection)?;
+                let algo_storer = (*storer).clone();
+                let key_algo = key
+                    .to_byte_algorithm(None, |key| async move {
+                        key.to_ref_entry(key_entry_path, algo_storer)
+                    })
                     .await
                     .map_err(CryptoErrorRejection)?;
                 let data_clone = data.clone();

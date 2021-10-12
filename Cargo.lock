@@ -567,7 +567,7 @@ checksum = "44c32f031ea41b4291d695026c023b95d59db2d8a2c7640800ed56bc8f510f22"
 [[package]]
 name = "const-oid"
 version = "0.6.1"
-source = "git+https://github.com/rustcrypto/formats.git?rev=566abc5ef466a6b85d37ec8a779500f906dff8ce#566abc5ef466a6b85d37ec8a779500f906dff8ce"
+source = "git+https://github.com/rustcrypto/formats.git?rev=a06d563ce3b5637f1f53c216ed1d1a8d11c94fff#a06d563ce3b5637f1f53c216ed1d1a8d11c94fff"
 
 [[package]]
 name = "constant_time_eq"
@@ -699,7 +699,7 @@ dependencies = [
 [[package]]
 name = "der"
 version = "0.5.0-pre"
-source = "git+https://github.com/rustcrypto/formats.git?rev=566abc5ef466a6b85d37ec8a779500f906dff8ce#566abc5ef466a6b85d37ec8a779500f906dff8ce"
+source = "git+https://github.com/rustcrypto/formats.git?rev=a06d563ce3b5637f1f53c216ed1d1a8d11c94fff#a06d563ce3b5637f1f53c216ed1d1a8d11c94fff"
 dependencies = [
  "const-oid 0.6.1",
  "der_derive",
@@ -708,7 +708,7 @@ dependencies = [
 [[package]]
 name = "der_derive"
 version = "0.5.0-pre"
-source = "git+https://github.com/rustcrypto/formats.git?rev=566abc5ef466a6b85d37ec8a779500f906dff8ce#566abc5ef466a6b85d37ec8a779500f906dff8ce"
+source = "git+https://github.com/rustcrypto/formats.git?rev=a06d563ce3b5637f1f53c216ed1d1a8d11c94fff#a06d563ce3b5637f1f53c216ed1d1a8d11c94fff"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2462,7 +2462,7 @@ dependencies = [
 [[package]]
 name = "redact-crypto"
 version = "0.1.0"
-source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=a0d7a857a2605c8bec0fcbdcc42aa7426afe0ea7#a0d7a857a2605c8bec0fcbdcc42aa7426afe0ea7"
+source = "git+https://github.com/pauwels-labs/redact-crypto.git?rev=7555ed4150d1079307ea34e9e443ea7693e1fd8e#7555ed4150d1079307ea34e9e443ea7693e1fd8e"
 dependencies = [
  "async-recursion",
  "async-trait",

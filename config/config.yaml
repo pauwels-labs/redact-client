@@ -14,7 +14,7 @@ relayer:
         filepath: "keys/private/client-tls.p12.pem"
     server:
       ca:
-        filepath: "certs/storer-ca.pem"
+        filepath: ""
 certificates:
   signing:
     root:

@@ -260,9 +260,12 @@ async fn main() {
     let relayer_root = config
         .get_str("relayer.tls.server.ca.filepath")
         .ok()
-        .map(|path| {
-            let read_bytes = std::fs::read(path).unwrap();
-            vec![Certificate::from_pem(read_bytes.as_slice()).unwrap()]
+        .and_then(|path| match std::fs::read(path) {
+            Ok(b) => Some(vec![Certificate::from_pem(b.as_slice()).unwrap()]),
+            Err(e) => match e.kind() {
+                ErrorKind::NotFound => None,
+                _ => Err(e).unwrap(),
+            },
         });
     let relayer = MutualTLSRelayer::new(
         config

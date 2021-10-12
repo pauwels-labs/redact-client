@@ -239,7 +239,10 @@ async fn main() {
     let pkcs12_path = config
         .get_str("storage.tls.client.pkcs12.filepath")
         .unwrap();
-    let server_ca_path = config.get_str("storage.tls.server.ca.filepath").unwrap();
+    let server_ca_path = config
+        .get_str("storage.tls.server.ca.filepath")
+        .ok()
+        .and_then(|path| if path.is_empty() { None } else { Some(path) });
     redact_crypto::storage::redact::ClientTlsConfig {
         pkcs12_path,
         server_ca_path,

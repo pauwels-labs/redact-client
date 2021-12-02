@@ -1,4 +1,4 @@
-FROM rust:1.54.0-alpine3.13 AS builder
+FROM rust:1.56.0-alpine3.13 AS builder
 
 # Create an unprivileged user
 RUN adduser --disabled-password --no-create-home --uid 1000 notroot notroot

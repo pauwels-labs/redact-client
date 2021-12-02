@@ -228,7 +228,7 @@ async fn main() {
                 let mut pkcs12_file = File::create(pkcs12_path).unwrap();
                 pkcs12_file.write_all(&tls_cert_bytes).unwrap();
                 pkcs12_file
-                    .write_all((*tls_key_pkcs8.to_pem()).as_bytes())
+                    .write_all((*(tls_key_pkcs8.to_pem(pkcs8::LineEnding::LF)).unwrap()).as_bytes())
                     .unwrap();
             }
             _ => Err(e).unwrap(),

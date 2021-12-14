@@ -293,7 +293,7 @@ async fn main() {
 
     // Create a CORS filter for the secure route that allows only localhost origin
     let secure_cors = warp::cors()
-        .allow_origin("http://localhost:8080")
+        .allow_origin(format!("http://localhost:{}", port).as_str())
         .allow_methods(vec!["GET", "POST"]);
 
     // Simple health-check route

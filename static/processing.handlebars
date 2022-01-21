@@ -1,0 +1,27 @@
+<html>
+	<head>
+		<style>
+		  {{ Processing.css }}
+		</style>
+		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'">
+	</head>
+	<body>
+
+		{{{ Processing.html }}}
+
+		<script>
+			async function getString(path) {
+				return fetch(`/raw/${path}/{{ Processing.token }}`)
+					.then(response => response.json())
+					.then(json => {
+						return json;
+					});
+			}
+
+			{{{ Processing.script }}}
+
+		</script>
+
+		{{{ Processing.body }}}
+	</body>
+</html>

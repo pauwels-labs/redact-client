@@ -31,6 +31,8 @@ use std::{
 use token::FromThreadRng;
 use warp::Filter;
 use warp_sessions::MemoryStore;
+use warp::http::header::{HeaderMap, HeaderValue};
+use crate::routes::secure::data::{get_raw, get_processing};
 
 #[derive(Serialize)]
 struct Healthz {}
@@ -307,7 +309,7 @@ async fn main() {
         .with(warp::wrap_fn(routes::unsecure::session(
             session_store.clone(),
         )))
-        .with(unsecure_cors);
+        .with(unsecure_cors.clone());
 
     // Routes called with a CSRF token, only to be called by the client itself
     let secure_routes = routes::secure(
@@ -321,6 +323,22 @@ async fn main() {
     )))
     .with(secure_cors.clone());
 
+    let raw_data_route = get_raw(
+        storer_shared.clone(),
+    )
+    .with(warp::wrap_fn(routes::secure::session_without_invalidation(
+        session_store.clone(),
+    )))
+    .with(secure_cors.clone());
+
+    let processing_route = get_processing(
+        render_engine.clone(),
+        token_generator.clone())
+    .with(warp::wrap_fn(routes::unsecure::session_for_processing(
+        session_store.clone(),
+    )))
+    .with(unsecure_cors.clone());
+
     // Routes for an external website to trigger requests from the client to itself
     let proxy_routes = routes::proxy(relayer).with(unsecure_cors_post.clone());
 
@@ -329,6 +347,8 @@ async fn main() {
         .or(unsecure_routes)
         .or(secure_routes)
         .or(proxy_routes)
+        .or(raw_data_route)
+        .or(processing_route)
         .with(warp::log("routes"))
         .recover(handle_rejection);
 

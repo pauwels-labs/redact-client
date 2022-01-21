@@ -26,6 +26,7 @@ impl Reject for RenderError {}
 pub enum TemplateValues {
     Unsecure(UnsecureTemplateValues),
     Secure(SecureTemplateValues),
+    Processing(ProcessingTemplateValues),
 }
 
 #[derive(Serialize, Debug, Default, PartialEq)]
@@ -51,6 +52,14 @@ pub struct SecureTemplateValues {
     pub js_message: Option<String>,
     pub js_height_msg_prefix: Option<String>,
     pub is_binary_data: bool,
+}
+
+#[derive(Serialize, Debug, Default, PartialEq)]
+pub struct ProcessingTemplateValues {
+    pub token: Option<String>,
+    pub css: Option<String>,
+    pub script: Option<String>,
+    pub html: Option<String>
 }
 
 impl From<HandlebarsTemplateError> for RenderError {

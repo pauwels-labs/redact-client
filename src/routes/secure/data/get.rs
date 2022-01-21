@@ -7,6 +7,7 @@ use crate::{
 use redact_crypto::Data;
 use serde::{Deserialize, Serialize};
 use warp::{Rejection, Reply};
+use crate::render::ProcessingTemplateValues;
 
 #[derive(Deserialize, Serialize)]
 pub struct QueryParams {
@@ -16,6 +17,13 @@ pub struct QueryParams {
     pub relay_url: Option<String>,
     pub js_message: Option<String>,
     pub js_height_msg_prefix: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct ProcessingQueryParams {
+    pub script: Option<String>,
+    pub html: Option<String>,
+    pub css: Option<String>
 }
 
 impl Validate for QueryParams {
@@ -53,6 +61,27 @@ pub fn reply<'a, R: Renderer>(
                 js_message: query.js_message,
                 js_height_msg_prefix: query.js_height_msg_prefix,
                 is_binary_data,
+            }),
+        },
+    )
+}
+
+pub fn processing_reply<'a, R: Renderer>(
+    token: &str,
+    script: Option<String>,
+    html: Option<String>,
+    css: Option<String>,
+    render_engine: &'a R,
+) -> Result<impl Reply + 'static, RenderError> {
+    Rendered::new(
+        render_engine,
+        RenderTemplate {
+            name: "processing",
+            value: TemplateValues::Processing(ProcessingTemplateValues {
+                token: Some(token.to_owned()),
+                css,
+                html,
+                script
             }),
         },
     )

@@ -12,6 +12,7 @@ pub fn setup_html_render_engine<'reg>() -> Result<HandlebarsRenderer<'reg>, Rend
     let mut template_mapping = HashMap::new();
     template_mapping.insert("unsecure", "./static/unsecure.handlebars");
     template_mapping.insert("secure", "./static/secure.handlebars");
+    template_mapping.insert("processing", "./static/processing.handlebars");
     HandlebarsRenderer::new(template_mapping)
 }
 

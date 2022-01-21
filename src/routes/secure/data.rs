@@ -18,6 +18,8 @@ use crate::{
     },
     token::TokenGenerator,
 };
+use percent_encoding::{percent_decode, percent_decode_str};
+use crate::routes::error::QueryParamValidationRejection;
 
 pub fn get<R: Renderer + Clone + Send + 'static, H: Storer, T: TokenGenerator>(
     storer: Arc<H>,
@@ -79,6 +81,88 @@ pub fn get<R: Renderer + Clone + Send + 'static, H: Storer, T: TokenGenerator>(
                     format!("/secure/data/{}/{}", &path, &old_token),
                     new_path,
                     Some(new_token),
+                ))
+            },
+        )
+        .untuple_one()
+}
+
+pub fn get_raw<H: Storer>(
+    storer: Arc<H>,
+) -> impl Filter<Extract = (Box<dyn Reply>,), Error = Rejection> + Clone {
+    warp::get()
+        .and(warp::path!("raw" / String / String))
+        .and(warp::any().map(move || storer.clone()))
+        .and_then(
+            move |path: String,
+                  old_token: String,
+                  storer: Arc<H>| async move {
+                let data_entry = match storer.get::<Data>(&path).await {
+                    Ok(e) => Ok(Some(e)),
+                    Err(e) => match e {
+                        CryptoError::NotFound { .. } => Ok(None),
+                        _ => Err(e),
+                    },
+                }
+                    .map_err(CryptoErrorRejection)?;
+
+                let data = match data_entry {
+                    Some(data_entry) => data_entry
+                        .take_resolve()
+                        .await
+                        .map_err(CryptoErrorRejection)?,
+                    None => {
+                        Data::String("".to_owned())
+                    }
+                };
+
+                Ok::<_, Rejection>(Box::new(warp::reply::with_status(
+                    warp::reply::json(&{data}),
+                    warp::http::StatusCode::OK,
+                )) as Box<dyn Reply>)
+            }
+        )
+}
+
+pub fn get_processing<R: Renderer + Clone + Send + 'static, T: TokenGenerator>(
+    render_engine: R,
+    token_generator: T,
+) -> impl Filter<Extract = (Box<dyn Reply>, String), Error = Rejection>
++ Clone {
+    warp::get()
+        .and(warp::path!("processing"))
+        .and(warp::any().map(move || token_generator.clone().generate_token().unwrap()))
+        .and(warp::query::<get::ProcessingQueryParams>())
+        .and(warp::any().map(move || render_engine.clone()))
+        .and_then(
+            move |new_token: String,
+                  query: get::ProcessingQueryParams,
+                  render_engine: R| async move {
+
+                let decoded_script = match query.script {
+                    Some(encoded_script) => {
+                        Some(percent_decode_str(encoded_script.as_str())
+                            .decode_utf8()
+                            .map_err(|_| warp::reject::custom(QueryParamValidationRejection))?
+                            .to_string())
+                    },
+                    None => None
+                };
+
+                let decoded_html = match query.html {
+                    Some(encoded_html) => {
+                        Some(percent_decode_str(encoded_html.as_str())
+                            .decode_utf8()
+                            .map_err(|_| warp::reject::custom(QueryParamValidationRejection))?
+                            .to_string())
+                    },
+                    None => None
+                };
+
+                Ok::<_, Rejection>((
+                    Box::new(get::processing_reply(&new_token, decoded_script, decoded_html,  query.css, &render_engine)?)
+                        as Box<dyn Reply>,
+                    new_token,
                 ))
             },
         )
